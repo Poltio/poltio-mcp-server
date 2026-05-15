@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 )
 
 const defaultBaseURL = "https://api-stage.poltio.com"
@@ -14,6 +15,7 @@ const defaultBaseURL = "https://api-stage.poltio.com"
 type PoltioClient struct {
 	baseURL    string
 	token      string
+	mu         sync.RWMutex
 	orgID      string
 	httpClient *http.Client
 }
@@ -38,6 +40,8 @@ func newClient(token, baseURL string) *PoltioClient {
 }
 
 func (c *PoltioClient) SetOrgID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.orgID = id
 }
 
@@ -79,9 +83,12 @@ func (c *PoltioClient) Post(path string, body any) ([]byte, error) {
 }
 
 func (c *PoltioClient) setHeaders(req *http.Request) {
+	c.mu.RLock()
+	orgID := c.orgID
+	c.mu.RUnlock()
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	if c.orgID != "" {
-		req.Header.Set("Organization-Id", c.orgID)
+	if orgID != "" {
+		req.Header.Set("Organization-Id", orgID)
 	}
 }
 
