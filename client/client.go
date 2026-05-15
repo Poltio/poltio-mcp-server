@@ -18,22 +18,31 @@ type PoltioClient struct {
 	httpClient *http.Client
 }
 
-func New(token, orgID string) *PoltioClient {
-	return newClient(token, orgID, defaultBaseURL)
+func New(token string) *PoltioClient {
+	return newClient(token, defaultBaseURL)
 }
 
 // NewForTest creates a client pointing at a custom base URL. Use in tests only.
 func NewForTest(token, orgID, baseURL string) *PoltioClient {
-	return newClient(token, orgID, baseURL)
+	c := newClient(token, baseURL)
+	c.orgID = orgID
+	return c
 }
 
-func newClient(token, orgID, baseURL string) *PoltioClient {
+func newClient(token, baseURL string) *PoltioClient {
 	return &PoltioClient{
 		baseURL:    baseURL,
 		token:      token,
-		orgID:      orgID,
 		httpClient: &http.Client{},
 	}
+}
+
+func (c *PoltioClient) SetOrgID(id string) {
+	c.orgID = id
+}
+
+func (c *PoltioClient) GetOrganizations() ([]byte, error) {
+	return c.Get("/platform/organizations", nil)
 }
 
 func (c *PoltioClient) Get(path string, query url.Values) ([]byte, error) {
@@ -71,7 +80,9 @@ func (c *PoltioClient) Post(path string, body any) ([]byte, error) {
 
 func (c *PoltioClient) setHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Organization-Id", c.orgID)
+	if c.orgID != "" {
+		req.Header.Set("Organization-Id", c.orgID)
+	}
 }
 
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
