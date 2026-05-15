@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 )
 
 const defaultBaseURL = "https://api-stage.poltio.com"
@@ -14,26 +15,56 @@ const defaultBaseURL = "https://api-stage.poltio.com"
 type PoltioClient struct {
 	baseURL    string
 	token      string
+	mu         sync.RWMutex
 	orgID      string
 	httpClient *http.Client
 }
 
-func New(token, orgID string) *PoltioClient {
-	return newClient(token, orgID, defaultBaseURL)
+func New(token string) *PoltioClient {
+	return newClient(token, defaultBaseURL)
 }
 
 // NewForTest creates a client pointing at a custom base URL. Use in tests only.
 func NewForTest(token, orgID, baseURL string) *PoltioClient {
-	return newClient(token, orgID, baseURL)
+	c := newClient(token, baseURL)
+	c.orgID = orgID
+	return c
 }
 
-func newClient(token, orgID, baseURL string) *PoltioClient {
+func newClient(token, baseURL string) *PoltioClient {
 	return &PoltioClient{
 		baseURL:    baseURL,
 		token:      token,
-		orgID:      orgID,
 		httpClient: &http.Client{},
 	}
+}
+
+func (c *PoltioClient) SetOrgID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.orgID = id
+}
+
+// GetOrganizations fetches the organizations the current user belongs to,
+// ordered by last_used_at desc. It uses /platform/account/profile which does
+// not require an Organization-Id header, making it safe to call at startup.
+func (c *PoltioClient) GetOrganizations() ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/platform/account/profile", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	data, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	var profile struct {
+		Organizations json.RawMessage `json:"organizations"`
+	}
+	if err := json.Unmarshal(data, &profile); err != nil {
+		return nil, fmt.Errorf("parse profile: %w", err)
+	}
+	return profile.Organizations, nil
 }
 
 func (c *PoltioClient) Get(path string, query url.Values) ([]byte, error) {
@@ -70,8 +101,13 @@ func (c *PoltioClient) Post(path string, body any) ([]byte, error) {
 }
 
 func (c *PoltioClient) setHeaders(req *http.Request) {
+	c.mu.RLock()
+	orgID := c.orgID
+	c.mu.RUnlock()
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Organization-Id", c.orgID)
+	if orgID != "" {
+		req.Header.Set("Organization-Id", orgID)
+	}
 }
 
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {

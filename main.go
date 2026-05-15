@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -12,17 +14,30 @@ import (
 	"github.com/Poltio/poltio-mcp-server/tools"
 )
 
+type orgEntry struct {
+	ID int `json:"id"`
+}
+
 func main() {
 	token := os.Getenv("POLTIO_API_TOKEN")
 	if token == "" {
 		log.Fatal("POLTIO_API_TOKEN environment variable is required")
 	}
-	orgID := os.Getenv("POLTIO_ORG_ID")
-	if orgID == "" {
-		log.Fatal("POLTIO_ORG_ID environment variable is required")
-	}
 
-	c := client.New(token, orgID)
+	c := client.New(token)
+
+	data, err := c.GetOrganizations()
+	if err != nil {
+		log.Fatalf("failed to fetch organizations at startup: %v", err)
+	}
+	var orgs []orgEntry
+	if err := json.Unmarshal(data, &orgs); err != nil {
+		log.Fatalf("failed to parse organizations at startup: %v", err)
+	}
+	if len(orgs) == 0 {
+		log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
+	}
+	c.SetOrgID(strconv.Itoa(orgs[0].ID))
 
 	s := server.NewMCPServer("poltio", "1.0.0")
 
@@ -61,6 +76,15 @@ func main() {
 		mcp.WithString("type", mcp.Description("Filter by type: poll, set, test, quiz, this-that")),
 		mcp.WithString("q", mcp.Description("Search query against title and description")),
 	), tools.ListDrafts(c))
+
+	s.AddTool(mcp.NewTool("list_organizations",
+		mcp.WithDescription("List Poltio organizations the current user belongs to, including their role in each."),
+	), tools.ListOrganizations(c))
+
+	s.AddTool(mcp.NewTool("switch_organization",
+		mcp.WithDescription("Switch the active organization context. All subsequent tool calls will operate under the selected organization."),
+		mcp.WithNumber("id", mcp.Description("Organization ID (from list_organizations)"), mcp.Required()),
+	), tools.SwitchOrganization(c))
 
 	if err := server.ServeStdio(s); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
