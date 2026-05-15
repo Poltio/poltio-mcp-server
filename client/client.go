@@ -45,8 +45,26 @@ func (c *PoltioClient) SetOrgID(id string) {
 	c.orgID = id
 }
 
+// GetOrganizations fetches the organizations the current user belongs to,
+// ordered by last_used_at desc. It uses /platform/account/profile which does
+// not require an Organization-Id header, making it safe to call at startup.
 func (c *PoltioClient) GetOrganizations() ([]byte, error) {
-	return c.Get("/platform/organizations", nil)
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/platform/account/profile", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	data, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	var profile struct {
+		Organizations json.RawMessage `json:"organizations"`
+	}
+	if err := json.Unmarshal(data, &profile); err != nil {
+		return nil, fmt.Errorf("parse profile: %w", err)
+	}
+	return profile.Organizations, nil
 }
 
 func (c *PoltioClient) Get(path string, query url.Values) ([]byte, error) {
