@@ -14,6 +14,8 @@ import (
 	"github.com/Poltio/poltio-mcp-server/tools"
 )
 
+var version = "dev"
+
 type orgEntry struct {
 	ID int `json:"id"`
 }
@@ -39,7 +41,7 @@ func main() {
 	}
 	c.SetOrgID(strconv.Itoa(orgs[0].ID))
 
-	s := server.NewMCPServer("poltio", "1.0.0")
+	s := server.NewMCPServer("poltio", version)
 
 	// ── Auth ──────────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("login",
