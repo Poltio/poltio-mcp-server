@@ -283,7 +283,7 @@ func main() {
 
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("upload_image",
-		mcp.WithDescription("Upload a base64-encoded image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results."),
+		mcp.WithDescription("Upload a base64-encoded image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
 		mcp.WithString("image_base64", mcp.Description("Base64-encoded image data (no data URI prefix, just the raw base64 string)"), mcp.Required()),
 		mcp.WithString("ext", mcp.Description("File extension without the dot, e.g. png, jpg, webp"), mcp.Required()),
 		mcp.WithString("bucket", mcp.Description("Optional storage bucket name")),
@@ -295,7 +295,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("Question text shown to the user")),
 		mcp.WithString("answer_type", mcp.Description("Answer type: media, text, score, star_rating, yesno, free_text, free_number, autocomplete"), mcp.Required()),
-		mcp.WithString("background", mcp.Description("Question image path returned by upload_image")),
+		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Allow selecting multiple answers: 0 (default) or 1")),
@@ -309,7 +309,7 @@ func main() {
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("Question text shown to the user")),
 		mcp.WithString("answer_type", mcp.Description("Answer type: media, text, score, star_rating, yesno, free_text, free_number, autocomplete"), mcp.Required()),
-		mcp.WithString("background", mcp.Description("Question image path returned by upload_image")),
+		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Allow selecting multiple answers: 0 or 1")),
