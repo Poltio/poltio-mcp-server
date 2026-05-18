@@ -13,8 +13,10 @@ import (
 
 // mockClient implements tools.ContentClient for testing.
 type mockClient struct {
-	getFunc  func(path string, query url.Values) ([]byte, error)
-	postFunc func(path string, body any) ([]byte, error)
+	getFunc    func(path string, query url.Values) ([]byte, error)
+	postFunc   func(path string, body any) ([]byte, error)
+	putFunc    func(path string, body any) ([]byte, error)
+	deleteFunc func(path string) ([]byte, error)
 }
 
 func (m *mockClient) Get(path string, query url.Values) ([]byte, error) {
@@ -23,6 +25,20 @@ func (m *mockClient) Get(path string, query url.Values) ([]byte, error) {
 
 func (m *mockClient) Post(path string, body any) ([]byte, error) {
 	return m.postFunc(path, body)
+}
+
+func (m *mockClient) Put(path string, body any) ([]byte, error) {
+	if m.putFunc != nil {
+		return m.putFunc(path, body)
+	}
+	return nil, nil
+}
+
+func (m *mockClient) Delete(path string) ([]byte, error) {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(path)
+	}
+	return nil, nil
 }
 
 func callRequest(args map[string]any) mcp.CallToolRequest {
@@ -183,10 +199,10 @@ func TestCreateContent_MissingTitleReturnsError(t *testing.T) {
 
 // --- publish_content ---
 
-func TestPublishContent_PostsToCorrectPath(t *testing.T) {
+func TestPublishContent_GetsCorrectPath(t *testing.T) {
 	var gotPath string
 	mock := &mockClient{
-		postFunc: func(path string, body any) ([]byte, error) {
+		getFunc: func(path string, query url.Values) ([]byte, error) {
 			gotPath = path
 			return []byte(`{"public_id":"xyz"}`), nil
 		},
