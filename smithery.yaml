@@ -1,0 +1,22 @@
+startCommand:
+  type: stdio
+  commandFunction: |-
+    (config) => ({
+      command: "poltio-mcp-server",
+      args: [],
+      env: {
+        POLTIO_API_TOKEN: config.apiToken
+      }
+    })
+
+configSchema:
+  type: object
+  required:
+    - apiToken
+  properties:
+    apiToken:
+      type: string
+      title: API Token
+      description: >
+        Bearer token for the Poltio platform API.
+        Generate one at: Poltio account → Settings → Tokens.

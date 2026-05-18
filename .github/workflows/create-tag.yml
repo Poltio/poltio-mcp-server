@@ -1,0 +1,54 @@
+name: Create new version
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    name: Create a new version tag
+    if: github.event.pull_request.merged
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - name: Determine version bump
+        id: bump
+        run: |
+          labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          if echo "$labels" | grep -q '"major"'; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$labels" | grep -q '"minor"'; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+      - name: Calculate new version
+        id: version
+        run: |
+          VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v0.0.0")
+          VERSION="${VERSION/v/}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          re='^[0-9]+$'
+          [[ $MAJOR =~ $re ]] || MAJOR=0
+          [[ $MINOR =~ $re ]] || MINOR=0
+          [[ $PATCH =~ $re ]] || PATCH=0
+
+          case "${{ steps.bump.outputs.type }}" in
+            major) ((MAJOR+=1)); MINOR=0; PATCH=0 ;;
+            minor) ((MINOR+=1)); PATCH=0 ;;
+            patch) ((PATCH+=1)) ;;
+          esac
+
+          echo "version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
