@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"sync"
@@ -80,7 +81,24 @@ func (c *PoltioClient) Get(path string, query url.Values) ([]byte, error) {
 	return c.do(req)
 }
 
+func (c *PoltioClient) Put(path string, body any) ([]byte, error) {
+	return c.sendWithBody(http.MethodPut, path, body)
+}
+
 func (c *PoltioClient) Post(path string, body any) ([]byte, error) {
+	return c.sendWithBody(http.MethodPost, path, body)
+}
+
+func (c *PoltioClient) Delete(path string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setHeaders(req)
+	return c.do(req)
+}
+
+func (c *PoltioClient) sendWithBody(method, path string, body any) ([]byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -89,7 +107,7 @@ func (c *PoltioClient) Post(path string, body any) ([]byte, error) {
 		}
 		bodyReader = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, bodyReader)
+	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +126,48 @@ func (c *PoltioClient) setHeaders(req *http.Request) {
 	if orgID != "" {
 		req.Header.Set("Organization-Id", orgID)
 	}
+}
+
+func (c *PoltioClient) PostFormFile(path, fieldName, filename string, content []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile(fieldName, filename)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fw.Write(content); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	c.setHeaders(req)
+	return c.do(req)
+}
+
+func (c *PoltioClient) PostFormMultipart(path string, fields map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	c.setHeaders(req)
+	return c.do(req)
 }
 
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
