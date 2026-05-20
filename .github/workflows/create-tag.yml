@@ -11,7 +11,7 @@ jobs:
     name: Create a new version tag
     if: github.event.pull_request.merged
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
