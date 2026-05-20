@@ -43,85 +43,6 @@ func main() {
 
 	s := server.NewMCPServer("poltio", version)
 
-	// ── Auth ──────────────────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("login",
-		mcp.WithDescription("First step of the login flow. If the account has 2fa enabled, this will provide a temporary token. If 2fa is disabled, this will provide a regular API token."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithString("password", mcp.Description("Password"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.Login(c))
-
-	s.AddTool(mcp.NewTool("login_verify_two_factor",
-		mcp.WithDescription("Second step of the login flow for accounts that enabled 2fa for their account."),
-		mcp.WithString("temp_token", mcp.Description("The temporary login token you received after login call"), mcp.Required()),
-		mcp.WithString("verification", mcp.Description("One time password (TOTP) from Google Authenticator compatible app"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.LoginVerifyTwoFactor(c))
-
-	s.AddTool(mcp.NewTool("login_verify_two_factor_recovery",
-		mcp.WithDescription("Second step of the login flow for 2fa enabled accounts but instead of TOTP this call requires a valid recovery code to bypass 2fa."),
-		mcp.WithString("temp_token", mcp.Description("The temporary login token you received after login call"), mcp.Required()),
-		mcp.WithString("verification", mcp.Description("Recovery code to bypass 2fa"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.LoginVerifyTwoFactorRecovery(c))
-
-	s.AddTool(mcp.NewTool("login_with_email",
-		mcp.WithDescription("This method generates a 1 use login url with signature if the user wants to generate a token without password and 2fa flows."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.LoginWithEmail(c))
-
-	s.AddTool(mcp.NewTool("login_with_email_token",
-		mcp.WithDescription("Second step of magic link auth, this call validates and login the user."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithString("token", mcp.Description("Your one time use login token"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.LoginWithEmailToken(c))
-
-	s.AddTool(mcp.NewTool("register",
-		mcp.WithDescription("Register a new account."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithString("password", mcp.Description("A strong password minimum of 8 or more chars"), mcp.Required()),
-		mcp.WithString("first_name", mcp.Description("First name")),
-		mcp.WithString("last_name", mcp.Description("Last name")),
-		mcp.WithString("password_confirmation", mcp.Description("Password confirmation field")),
-		mcp.WithNumber("accepted", mcp.Description("Accepted terms and conditions: 0 or 1")),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.Register(c))
-
-	s.AddTool(mcp.NewTool("forget_password",
-		mcp.WithDescription("Start the password recovery flow."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.ForgetPassword(c))
-
-	s.AddTool(mcp.NewTool("reset_password",
-		mcp.WithDescription("Complete the password recovery flow and reset your password."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithString("token", mcp.Description("Password reset token"), mcp.Required()),
-		mcp.WithString("password", mcp.Description("New password"), mcp.Required()),
-		mcp.WithString("password_confirmation", mcp.Description("Password confirmation field")),
-		mcp.WithNumber("client_id", mcp.Description("OAuth client ID for the Poltio API Client")),
-		mcp.WithString("client_secret", mcp.Description("OAuth client secret for the poltio api client")),
-	), tools.ResetPassword(c))
-
-	s.AddTool(mcp.NewTool("verify_email",
-		mcp.WithDescription("Verify the email address."),
-		mcp.WithString("email", mcp.Description("Email address"), mcp.Required()),
-		mcp.WithString("token", mcp.Description("Verify token"), mcp.Required()),
-	), tools.VerifyEmail(c))
-
-	s.AddTool(mcp.NewTool("logout",
-		mcp.WithDescription("Expire the currently used active token."),
-	), tools.Logout(c))
-
 	// ── Content ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("list_content",
 		mcp.WithDescription("List Poltio content (polls, quizzes, tests) with optional pagination and filtering."),
@@ -239,12 +160,6 @@ func main() {
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
 		mcp.WithString("metrics", mcp.Description("Comma-separated metric names: view,vote,voter,start,finish,conversion (defaults to all)")),
 	), tools.GetContentMetrics(c))
-
-	s.AddTool(mcp.NewTool("calculator_test",
-		mcp.WithDescription("Test a calculator formula against a set of variable values. Useful when building score-based quizzes to verify the formula before saving."),
-		mcp.WithString("formula", mcp.Description("Calculator formula using Qx variable names, e.g. Q1 + Q2 + Q3"), mcp.Required()),
-		mcp.WithString("vars", mcp.Description(`JSON array of variable objects, e.g. [{"Q1":"5"},{"Q2":"3"}]`), mcp.Required()),
-	), tools.CalculatorTest(c))
 
 	s.AddTool(mcp.NewTool("get_vote_sources",
 		mcp.WithDescription("Get paginated vote sources (referring URLs) for a content item."),
@@ -982,24 +897,6 @@ func main() {
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
 	), tools.DeleteWidget(c))
 
-	// ── Tokens ────────────────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("list_tokens",
-		mcp.WithDescription("List API tokens for this account."),
-		mcp.WithNumber("page", mcp.Description("Page number")),
-		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.ListTokens(c))
-
-	s.AddTool(mcp.NewTool("create_token",
-		mcp.WithDescription("Issue a new API token."),
-		mcp.WithString("name", mcp.Description("Name to identify the token"), mcp.Required()),
-		mcp.WithString("expires", mcp.Description("Expiry: 1 Day, 1 Week, 1 Month, 3 Months, 6 Months, 1 Year, Never")),
-	), tools.CreateToken(c))
-
-	s.AddTool(mcp.NewTool("revoke_token",
-		mcp.WithDescription("Revoke an API token by ID."),
-		mcp.WithNumber("token_id", mcp.Description("Token ID"), mcp.Required()),
-	), tools.RevokeToken(c))
-
 	// ── Settings ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("update_settings",
 		mcp.WithDescription("Update your account's username, email, or profile photo."),
@@ -1140,11 +1037,6 @@ func main() {
 		mcp.WithDescription("Create a polt.io shortened URL from any long URL."),
 		mcp.WithString("url", mcp.Description("Fully qualified URL to shorten"), mcp.Required()),
 	), tools.CreateShortLink(c))
-
-	s.AddTool(mcp.NewTool("trigger_demo",
-		mcp.WithDescription("Request a Trigger Demo background image for a checkout success page URL."),
-		mcp.WithString("url", mcp.Description("Checkout success page URL"), mcp.Required()),
-	), tools.TriggerDemo(c))
 
 	// ── Subscription ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("list_subscription_tiers",
