@@ -66,17 +66,3 @@ func CreateShortLink(c ContentClient) func(context.Context, mcp.CallToolRequest)
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
-
-func TriggerDemo(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		pageURL, err := req.RequireString("url")
-		if err != nil || pageURL == "" {
-			return nil, fmt.Errorf("url is required (your checkout success page URL)")
-		}
-		data, err := c.Post("/platform/trigger-demo", map[string]any{"url": pageURL})
-		if err != nil {
-			return nil, fmt.Errorf("trigger_demo: %w", err)
-		}
-		return mcp.NewToolResultText(string(data)), nil
-	}
-}
