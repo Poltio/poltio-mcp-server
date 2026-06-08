@@ -15,13 +15,31 @@ go build -o poltio-mcp-server .
 
 ## Configuration
 
-One environment variable is required at startup:
-
 | Variable | Description |
 |---|---|
 | `POLTIO_API_TOKEN` | Bearer token — from Poltio account → Settings → Tokens |
+| `PORT` | When set, starts an HTTP server on that port instead of stdio |
 
 The server automatically fetches your organizations at startup and activates the first one. Use the `list_organizations` and `switch_organization` tools to view and change the active organization.
+
+## HTTP Mode (for web UIs and Smithery)
+
+Set `PORT` to start the server as an HTTP/Streamable-HTTP server instead of a stdio process:
+
+```bash
+POLTIO_API_TOKEN=your-token PORT=8080 ./poltio-mcp-server
+```
+
+The MCP endpoint is available at `http://localhost:8080/mcp`.
+
+All requests must include `Authorization: Bearer <POLTIO_API_TOKEN>` — the server rejects anything that doesn't match.
+
+### Publishing to Smithery
+
+1. Deploy the server to any host with a public HTTPS URL (Fly.io, Railway, Render, VPS).
+2. Set `POLTIO_API_TOKEN` and `PORT` in the deployment environment.
+3. Go to [smithery.ai](https://smithery.ai) → Publish → enter your server URL (`https://your-host.com/mcp`).
+4. Users connecting through Smithery must configure `Authorization: Bearer <token>` in the Smithery connection settings.
 
 ## Claude Desktop Integration
 

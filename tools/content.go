@@ -107,6 +107,63 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetInt("display_repeat", -1); v >= 0 {
 			body["display_repeat"] = v
 		}
+		if v := req.GetString("vertical_mobile_image", ""); v != "" {
+			body["vertical_mobile_image"] = v
+		}
+		if v := req.GetString("embed_footer_url", ""); v != "" {
+			body["embed_footer_url"] = v
+		}
+		if v := req.GetInt("is_searchable", -1); v >= 0 {
+			body["is_searchable"] = v
+		}
+		if v := req.GetInt("is_calculator", -1); v >= 0 {
+			body["is_calculator"] = v
+		}
+		if v := req.GetInt("search_results_per_page", -1); v >= 0 {
+			body["search_results_per_page"] = v
+		}
+		if v := req.GetInt("result_loading", -1); v >= 0 {
+			body["result_loading"] = v
+		}
+		if v := req.GetString("loading_next_question_label", ""); v != "" {
+			body["loading_next_question_label"] = v
+		}
+		if v := req.GetString("loading_result_label", ""); v != "" {
+			body["loading_result_label"] = v
+		}
+		if v := req.GetInt("play_once", -1); v >= 0 {
+			body["play_once"] = v
+		}
+		if v := req.GetString("play_once_strategy", ""); v != "" {
+			body["play_once_strategy"] = v
+		}
+		if v := req.GetString("play_once_msg", ""); v != "" {
+			body["play_once_msg"] = v
+		}
+		if v := req.GetString("play_once_img", ""); v != "" {
+			body["play_once_img"] = v
+		}
+		if v := req.GetString("play_once_link", ""); v != "" {
+			body["play_once_link"] = v
+		}
+		if v := req.GetString("play_once_btn", ""); v != "" {
+			body["play_once_btn"] = v
+		}
+		if v := req.GetInt("end_date_day", -1); v >= 0 {
+			body["end_date_day"] = v
+		}
+		if v := req.GetInt("end_date_hour", -1); v >= 0 {
+			body["end_date_hour"] = v
+		}
+		if v := req.GetInt("end_date_minute", -1); v >= 0 {
+			body["end_date_minute"] = v
+		}
+		if v := req.GetString("attributes_json", ""); v != "" {
+			var attrs map[string]any
+			if err := json.Unmarshal([]byte(v), &attrs); err == nil {
+				body["attributes"] = attrs
+			}
+		}
 		data, err := c.Post("/platform/content", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_content: %w", err)
@@ -200,6 +257,63 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetInt("display_repeat", -1); v >= 0 {
 			body["display_repeat"] = v
+		}
+		if v := req.GetString("vertical_mobile_image", ""); v != "" {
+			body["vertical_mobile_image"] = v
+		}
+		if v := req.GetString("embed_footer_url", ""); v != "" {
+			body["embed_footer_url"] = v
+		}
+		if v := req.GetInt("is_searchable", -1); v >= 0 {
+			body["is_searchable"] = v
+		}
+		if v := req.GetInt("is_calculator", -1); v >= 0 {
+			body["is_calculator"] = v
+		}
+		if v := req.GetInt("search_results_per_page", -1); v >= 0 {
+			body["search_results_per_page"] = v
+		}
+		if v := req.GetInt("result_loading", -1); v >= 0 {
+			body["result_loading"] = v
+		}
+		if v := req.GetString("loading_next_question_label", ""); v != "" {
+			body["loading_next_question_label"] = v
+		}
+		if v := req.GetString("loading_result_label", ""); v != "" {
+			body["loading_result_label"] = v
+		}
+		if v := req.GetInt("play_once", -1); v >= 0 {
+			body["play_once"] = v
+		}
+		if v := req.GetString("play_once_strategy", ""); v != "" {
+			body["play_once_strategy"] = v
+		}
+		if v := req.GetString("play_once_msg", ""); v != "" {
+			body["play_once_msg"] = v
+		}
+		if v := req.GetString("play_once_img", ""); v != "" {
+			body["play_once_img"] = v
+		}
+		if v := req.GetString("play_once_link", ""); v != "" {
+			body["play_once_link"] = v
+		}
+		if v := req.GetString("play_once_btn", ""); v != "" {
+			body["play_once_btn"] = v
+		}
+		if v := req.GetInt("end_date_day", -1); v >= 0 {
+			body["end_date_day"] = v
+		}
+		if v := req.GetInt("end_date_hour", -1); v >= 0 {
+			body["end_date_hour"] = v
+		}
+		if v := req.GetInt("end_date_minute", -1); v >= 0 {
+			body["end_date_minute"] = v
+		}
+		if v := req.GetString("attributes_json", ""); v != "" {
+			var attrs map[string]any
+			if err := json.Unmarshal([]byte(v), &attrs); err == nil {
+				body["attributes"] = attrs
+			}
 		}
 		data, err := c.Put("/platform/content/"+publicID, body)
 		if err != nil {

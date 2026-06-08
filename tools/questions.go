@@ -42,6 +42,39 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
 		}
+		if v := req.GetString("name", ""); v != "" {
+			body["name"] = v
+		}
+		if v := req.GetInt("max_multi_punch_answer", -1); v >= 0 {
+			body["max_multi_punch_answer"] = v
+		}
+		if v := req.GetInt("recommended_popular_answer", -1); v >= 0 {
+			body["recommended_popular_answer"] = v
+		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetInt("is_searchable", -1); v >= 0 {
+			body["is_searchable"] = v
+		}
+		if v := req.GetString("cal_val_default", ""); v != "" {
+			body["cal_val_default"] = v
+		}
+		if v := req.GetString("autocomplete_help", ""); v != "" {
+			body["autocomplete_help"] = v
+		}
+		if v := req.GetString("autocomplete_placeholder", ""); v != "" {
+			body["autocomplete_placeholder"] = v
+		}
+		if v := req.GetInt("position", -1); v >= 0 {
+			body["position"] = v
+		}
+		if v := req.GetString("conditions", ""); v != "" {
+			body["conditions"] = v
+		}
+		if v := req.GetInt("condition_reverse", -1); v >= 0 {
+			body["condition_reverse"] = v
+		}
 		data, err := c.Post("/platform/content/"+publicID+"/question", body)
 		if err != nil {
 			return nil, fmt.Errorf("add_question: %w", err)
@@ -85,6 +118,39 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
+		}
+		if v := req.GetString("name", ""); v != "" {
+			body["name"] = v
+		}
+		if v := req.GetInt("max_multi_punch_answer", -1); v >= 0 {
+			body["max_multi_punch_answer"] = v
+		}
+		if v := req.GetInt("recommended_popular_answer", -1); v >= 0 {
+			body["recommended_popular_answer"] = v
+		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetInt("is_searchable", -1); v >= 0 {
+			body["is_searchable"] = v
+		}
+		if v := req.GetString("cal_val_default", ""); v != "" {
+			body["cal_val_default"] = v
+		}
+		if v := req.GetString("autocomplete_help", ""); v != "" {
+			body["autocomplete_help"] = v
+		}
+		if v := req.GetString("autocomplete_placeholder", ""); v != "" {
+			body["autocomplete_placeholder"] = v
+		}
+		if v := req.GetInt("position", -1); v >= 0 {
+			body["position"] = v
+		}
+		if v := req.GetString("conditions", ""); v != "" {
+			body["conditions"] = v
+		}
+		if v := req.GetInt("condition_reverse", -1); v >= 0 {
+			body["condition_reverse"] = v
 		}
 		path := "/platform/content/" + publicID + "/question/" + strconv.Itoa(questionID)
 		data, err := c.Put(path, body)
