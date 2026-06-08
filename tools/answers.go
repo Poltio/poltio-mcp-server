@@ -39,6 +39,27 @@ func AddAnswer(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp
 		if v := req.GetInt("is_mutually_exclusive", -1); v >= 0 {
 			body["is_mutually_exclusive"] = v
 		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetString("search_query", ""); v != "" {
+			body["search_query"] = v
+		}
+		if v := req.GetString("search_filter", ""); v != "" {
+			body["search_filter"] = v
+		}
+		if v := req.GetInt("position", -1); v >= 0 {
+			body["position"] = v
+		}
+		if v := req.GetInt("max_vote", -1); v >= 0 {
+			body["max_vote"] = v
+		}
+		if v := req.GetString("addon", ""); v != "" {
+			body["addon"] = v
+		}
+		if v := req.GetString("disabled_msg", ""); v != "" {
+			body["disabled_msg"] = v
+		}
 		path := "/platform/content/" + publicID + "/question/" + strconv.Itoa(questionID) + "/answer"
 		data, err := c.Post(path, body)
 		if err != nil {
@@ -107,6 +128,27 @@ func UpdateAnswer(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetInt("is_mutually_exclusive", -1); v >= 0 {
 			body["is_mutually_exclusive"] = v
+		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetString("search_query", ""); v != "" {
+			body["search_query"] = v
+		}
+		if v := req.GetString("search_filter", ""); v != "" {
+			body["search_filter"] = v
+		}
+		if v := req.GetInt("position", -1); v >= 0 {
+			body["position"] = v
+		}
+		if v := req.GetInt("max_vote", -1); v >= 0 {
+			body["max_vote"] = v
+		}
+		if v := req.GetString("addon", ""); v != "" {
+			body["addon"] = v
+		}
+		if v := req.GetString("disabled_msg", ""); v != "" {
+			body["disabled_msg"] = v
 		}
 		path := "/platform/content/" + publicID +
 			"/question/" + strconv.Itoa(questionID) +

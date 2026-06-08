@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -64,6 +65,54 @@ func CreateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		if v := req.GetInt("mandatory", -1); v >= 0 {
 			body["mandatory"] = v == 1
 		}
+		if v := req.GetString("image", ""); v != "" {
+			body["image"] = v
+		}
+		if v := req.GetInt("tc_optional", -1); v >= 0 {
+			body["tc_optional"] = v
+		}
+		if v := req.GetInt("tc2_optional", -1); v >= 0 {
+			body["tc2_optional"] = v
+		}
+		if v := req.GetInt("auto_open", -1); v >= 0 {
+			body["auto_open"] = v
+		}
+		if v := req.GetInt("auto_open_delay", -1); v >= 0 {
+			body["auto_open_delay"] = v
+		}
+		if v := req.GetInt("open_minimized", -1); v >= 0 {
+			body["open_minimized"] = v
+		}
+		if v := req.GetInt("delay", -1); v >= 0 {
+			body["delay"] = v
+		}
+		if v := req.GetString("link_target", ""); v != "" {
+			body["link_target"] = v
+		}
+		if v := req.GetString("tc_short", ""); v != "" {
+			body["tc_short"] = v
+		}
+		if v := req.GetString("tc2_short", ""); v != "" {
+			body["tc2_short"] = v
+		}
+		if v := req.GetString("tc_approve_button_label", ""); v != "" {
+			body["tc_approve_button_label"] = v
+		}
+		if v := req.GetString("tc_reject_button_label", ""); v != "" {
+			body["tc_reject_button_label"] = v
+		}
+		if v := req.GetString("tc2_approve_button_label", ""); v != "" {
+			body["tc2_approve_button_label"] = v
+		}
+		if v := req.GetString("tc2_reject_button_label", ""); v != "" {
+			body["tc2_reject_button_label"] = v
+		}
+		if v := req.GetString("custom_labels_json", ""); v != "" {
+			var labels map[string]any
+			if err := json.Unmarshal([]byte(v), &labels); err == nil {
+				body["custom_labels"] = labels
+			}
+		}
 		data, err := c.Post("/platform/leads", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_lead: %w", err)
@@ -125,6 +174,54 @@ func UpdateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		if v := req.GetInt("mandatory", -1); v >= 0 {
 			body["mandatory"] = v == 1
+		}
+		if v := req.GetString("image", ""); v != "" {
+			body["image"] = v
+		}
+		if v := req.GetInt("tc_optional", -1); v >= 0 {
+			body["tc_optional"] = v
+		}
+		if v := req.GetInt("tc2_optional", -1); v >= 0 {
+			body["tc2_optional"] = v
+		}
+		if v := req.GetInt("auto_open", -1); v >= 0 {
+			body["auto_open"] = v
+		}
+		if v := req.GetInt("auto_open_delay", -1); v >= 0 {
+			body["auto_open_delay"] = v
+		}
+		if v := req.GetInt("open_minimized", -1); v >= 0 {
+			body["open_minimized"] = v
+		}
+		if v := req.GetInt("delay", -1); v >= 0 {
+			body["delay"] = v
+		}
+		if v := req.GetString("link_target", ""); v != "" {
+			body["link_target"] = v
+		}
+		if v := req.GetString("tc_short", ""); v != "" {
+			body["tc_short"] = v
+		}
+		if v := req.GetString("tc2_short", ""); v != "" {
+			body["tc2_short"] = v
+		}
+		if v := req.GetString("tc_approve_button_label", ""); v != "" {
+			body["tc_approve_button_label"] = v
+		}
+		if v := req.GetString("tc_reject_button_label", ""); v != "" {
+			body["tc_reject_button_label"] = v
+		}
+		if v := req.GetString("tc2_approve_button_label", ""); v != "" {
+			body["tc2_approve_button_label"] = v
+		}
+		if v := req.GetString("tc2_reject_button_label", ""); v != "" {
+			body["tc2_reject_button_label"] = v
+		}
+		if v := req.GetString("custom_labels_json", ""); v != "" {
+			var labels map[string]any
+			if err := json.Unmarshal([]byte(v), &labels); err == nil {
+				body["custom_labels"] = labels
+			}
 		}
 		data, err := c.Put("/platform/leads/"+leadID, body)
 		if err != nil {

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -182,6 +183,27 @@ func CreateWebhook(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetInt("incomplete_send", -1); v >= 0 {
 			body["incomplete_send"] = v == 1
 		}
+		if v := req.GetInt("incomplete_delay", -1); v >= 0 {
+			body["incomplete_delay"] = v
+		}
+		if v := req.GetInt("use_oauth", -1); v >= 0 {
+			body["use_oauth"] = v == 1
+		}
+		if v := req.GetString("oauth_login_endpoint", ""); v != "" {
+			body["oauth_login_endpoint"] = v
+		}
+		if v := req.GetString("oauth_request_body_json", ""); v != "" {
+			var oauthBody map[string]any
+			if err := json.Unmarshal([]byte(v), &oauthBody); err == nil {
+				body["oauth_request_body"] = oauthBody
+			}
+		}
+		if v := req.GetString("oauth_request_headers_json", ""); v != "" {
+			var oauthHeaders map[string]any
+			if err := json.Unmarshal([]byte(v), &oauthHeaders); err == nil {
+				body["oauth_request_headers"] = oauthHeaders
+			}
+		}
 		data, err := c.Post("/platform/hooks/web", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_webhook: %w", err)
@@ -237,6 +259,27 @@ func UpdateWebhook(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetInt("incomplete_send", -1); v >= 0 {
 			body["incomplete_send"] = v == 1
+		}
+		if v := req.GetInt("incomplete_delay", -1); v >= 0 {
+			body["incomplete_delay"] = v
+		}
+		if v := req.GetInt("use_oauth", -1); v >= 0 {
+			body["use_oauth"] = v == 1
+		}
+		if v := req.GetString("oauth_login_endpoint", ""); v != "" {
+			body["oauth_login_endpoint"] = v
+		}
+		if v := req.GetString("oauth_request_body_json", ""); v != "" {
+			var oauthBody map[string]any
+			if err := json.Unmarshal([]byte(v), &oauthBody); err == nil {
+				body["oauth_request_body"] = oauthBody
+			}
+		}
+		if v := req.GetString("oauth_request_headers_json", ""); v != "" {
+			var oauthHeaders map[string]any
+			if err := json.Unmarshal([]byte(v), &oauthHeaders); err == nil {
+				body["oauth_request_headers"] = oauthHeaders
+			}
 		}
 		data, err := c.Put("/platform/hooks/web/"+strconv.Itoa(hookID), body)
 		if err != nil {

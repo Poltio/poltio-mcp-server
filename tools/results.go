@@ -40,6 +40,18 @@ func AddResult(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp
 		if v := req.GetInt("max_c", -1); v >= 0 {
 			body["max_c"] = v
 		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetString("search", ""); v != "" {
+			body["search"] = v
+		}
+		if v := req.GetString("search2", ""); v != "" {
+			body["search2"] = v
+		}
+		if v := req.GetInt("is_default", -1); v >= 0 {
+			body["is_default"] = v
+		}
 		data, err := c.Post("/platform/content/"+publicID+"/result", body)
 		if err != nil {
 			return nil, fmt.Errorf("add_result: %w", err)
@@ -82,6 +94,18 @@ func UpdateResult(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetInt("max_c", -1); v >= 0 {
 			body["max_c"] = v
+		}
+		if v := req.GetString("luv", ""); v != "" {
+			body["luv"] = v
+		}
+		if v := req.GetString("search", ""); v != "" {
+			body["search"] = v
+		}
+		if v := req.GetString("search2", ""); v != "" {
+			body["search2"] = v
+		}
+		if v := req.GetInt("is_default", -1); v >= 0 {
+			body["is_default"] = v
 		}
 		path := "/platform/content/" + publicID + "/result/" + strconv.Itoa(resultID)
 		data, err := c.Put(path, body)
