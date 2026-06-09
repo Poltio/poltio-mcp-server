@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/Poltio/poltio-mcp-server/client"
+	"github.com/Poltio/poltio-mcp-server/oauth"
 	"github.com/Poltio/poltio-mcp-server/tools"
 )
 
@@ -1321,21 +1322,35 @@ func main() {
 	), tools.CreateSubscription(c))
 
 	if port != "" {
-		httpServer := server.NewStreamableHTTPServer(
+		serverURL := os.Getenv("SERVER_URL")
+		devMode := os.Getenv("BRIDGE_DEV_MODE") == "true"
+		if devMode {
+			if serverURL == "" {
+				log.Fatal("SERVER_URL env var is required in bridge mode")
+			}
+		} else {
+			if err := oauth.ValidateServerURL(serverURL); err != nil {
+				log.Fatalf("bridge mode startup: %v", err)
+			}
+		}
+
+		prmHandler, asmHandler := oauth.MetadataHandlers(serverURL)
+
+		mcpServer := server.NewStreamableHTTPServer(
 			s,
 			server.WithEndpointPath("/mcp"),
 			server.WithStreamableHTTPCORS(server.WithCORSAllowedOrigins("*")),
 		)
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer "+token {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-			httpServer.ServeHTTP(w, r)
-		})
-		log.Printf("poltio-mcp-server listening on :%s/mcp", port)
-		if err := http.ListenAndServe(":"+port, handler); err != nil {
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/.well-known/oauth-protected-resource", prmHandler)
+		mux.HandleFunc("/.well-known/oauth-authorization-server", asmHandler)
+		// /mcp: require Authorization header; full token validation added in U7
+		mux.Handle("/mcp", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
+		mux.Handle("/mcp/", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
+
+		log.Printf("poltio-mcp-server bridge mode listening on :%s", port)
+		if err := http.ListenAndServe(":"+port, mux); err != nil {
 			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 			os.Exit(1)
 		}
