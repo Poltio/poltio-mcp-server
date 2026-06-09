@@ -1346,7 +1346,8 @@ func main() {
 		}
 		defer db.Close()
 
-		if _, err := store.KeyFromEnv(); err != nil {
+		encKey, err := store.KeyFromEnv()
+		if err != nil {
 			log.Fatalf("bridge mode: %v", err)
 		}
 
@@ -1374,6 +1375,10 @@ func main() {
 		mux.HandleFunc("/.well-known/oauth-protected-resource", prmHandler)
 		mux.HandleFunc("/.well-known/oauth-authorization-server", asmHandler)
 		mux.HandleFunc("/register", oauth.RegisterHandler(db, oauth.RegisterConfig{}))
+		mux.HandleFunc("/authorize", oauth.AuthorizeHandler(db, 10*time.Minute))
+		mux.HandleFunc("/consent", oauth.ConsentHandler(db, serverURL, encKey, 10*time.Minute, ""))
+		mux.HandleFunc("/token", oauth.TokenHandler(db))
+		mux.HandleFunc("/revoke", oauth.RevokeHandler(db))
 		// /mcp: require Authorization header; full token validation added in U7
 		mux.Handle("/mcp", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
 		mux.Handle("/mcp/", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
