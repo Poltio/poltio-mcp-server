@@ -2,7 +2,9 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -10,6 +12,43 @@ import (
 	"net/url"
 	"sync"
 )
+
+// Sentinel errors for Poltio API response classification.
+var (
+	ErrPoltioUnauthorized   = errors.New("poltio: unauthorized (401)")
+	ErrPoltioUnavailable    = errors.New("poltio: unavailable (5xx or transport failure)")
+	ErrBridgeDecryptFailure = errors.New("bridge: failed to decrypt stored credentials")
+)
+
+type contextKey struct{}
+
+// WithContext stores a PoltioClient in ctx.
+func WithContext(ctx context.Context, c *PoltioClient) context.Context {
+	return context.WithValue(ctx, contextKey{}, c)
+}
+
+// FromContext retrieves the per-request PoltioClient stored by WithHTTPContextFunc (U7).
+// Returns nil, ErrBridgeDecryptFailure if no client is in ctx (means context wiring failed).
+func FromContext(ctx context.Context) (*PoltioClient, error) {
+	c, ok := ctx.Value(contextKey{}).(*PoltioClient)
+	if !ok || c == nil {
+		return nil, ErrBridgeDecryptFailure
+	}
+	return c, nil
+}
+
+type grantIDKey struct{}
+
+// WithGrantID stores the grant ID in context for use by tool handlers (e.g. SwitchOrganization).
+func WithGrantID(ctx context.Context, grantID string) context.Context {
+	return context.WithValue(ctx, grantIDKey{}, grantID)
+}
+
+// GrantIDFromContext retrieves the grant ID set by WithHTTPContextFunc.
+func GrantIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(grantIDKey{}).(string)
+	return id
+}
 
 const defaultBaseURL = "https://api-stage.poltio.com"
 
@@ -27,6 +66,17 @@ func New(token string) *PoltioClient {
 
 // NewForTest creates a client pointing at a custom base URL. Use in tests only.
 func NewForTest(token, orgID, baseURL string) *PoltioClient {
+	c := newClient(token, baseURL)
+	c.orgID = orgID
+	return c
+}
+
+// NewForRequest creates a PoltioClient for a single HTTP request in bridge mode.
+// baseURL defaults to the production API if empty.
+func NewForRequest(token, orgID, baseURL string) *PoltioClient {
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
 	c := newClient(token, baseURL)
 	c.orgID = orgID
 	return c
@@ -173,12 +223,18 @@ func (c *PoltioClient) PostFormMultipart(path string, fields map[string]string) 
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrPoltioUnavailable, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, ErrPoltioUnauthorized
+	}
+	if resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: status %d", ErrPoltioUnavailable, resp.StatusCode)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))

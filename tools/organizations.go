@@ -6,11 +6,19 @@ import (
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/Poltio/poltio-mcp-server/client"
 )
 
 type OrgClient interface {
 	GetOrganizations() ([]byte, error)
 	SetOrgID(id string)
+}
+
+// OrgOverrideSetter persists a per-session org override (bridge HTTP mode).
+// In stdio mode this is nil; SwitchOrganization falls back to SetOrgID.
+type OrgOverrideSetter interface {
+	SetOrgOverride(ctx context.Context, grantID, orgID string) error
 }
 
 func ListOrganizations(c OrgClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -23,13 +31,26 @@ func ListOrganizations(c OrgClient) func(context.Context, mcp.CallToolRequest) (
 	}
 }
 
-func SwitchOrganization(c OrgClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func SwitchOrganization(c OrgClient, overrideSetter OrgOverrideSetter) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, err := req.RequireInt("id")
 		if err != nil {
 			return nil, fmt.Errorf("id is required")
 		}
-		c.SetOrgID(strconv.Itoa(id))
+		orgID := strconv.Itoa(id)
+
+		if overrideSetter != nil {
+			// Bridge HTTP mode: persist org override to DB so all subsequent requests use it.
+			grantID := client.GrantIDFromContext(ctx)
+			if grantID != "" {
+				if err := overrideSetter.SetOrgOverride(ctx, grantID, orgID); err != nil {
+					return nil, fmt.Errorf("switch_organization: %w", err)
+				}
+				return mcp.NewToolResultText(fmt.Sprintf("Switched to organization %d.", id)), nil
+			}
+		}
+		// stdio mode fallback
+		c.SetOrgID(orgID)
 		return mcp.NewToolResultText(fmt.Sprintf("Switched to organization %d.", id)), nil
 	}
 }

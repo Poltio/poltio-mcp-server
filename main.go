@@ -23,24 +23,31 @@ type orgEntry struct {
 
 func main() {
 	token := os.Getenv("POLTIO_API_TOKEN")
-	if token == "" {
+	port := os.Getenv("PORT")
+
+	// In bridge mode (PORT set), credentials are resolved per-request from the OAuth store.
+	// POLTIO_API_TOKEN is only required for stdio single-tenant mode.
+	if token == "" && port == "" {
 		log.Fatal("POLTIO_API_TOKEN environment variable is required")
 	}
 
-	c := client.New(token)
+	var c *client.PoltioClient
+	if token != "" {
+		c = client.New(token)
 
-	data, err := c.GetOrganizations()
-	if err != nil {
-		log.Fatalf("failed to fetch organizations at startup: %v", err)
+		data, err := c.GetOrganizations()
+		if err != nil {
+			log.Fatalf("failed to fetch organizations at startup: %v", err)
+		}
+		var orgs []orgEntry
+		if err := json.Unmarshal(data, &orgs); err != nil {
+			log.Fatalf("failed to parse organizations at startup: %v", err)
+		}
+		if len(orgs) == 0 {
+			log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
+		}
+		c.SetOrgID(strconv.Itoa(orgs[0].ID))
 	}
-	var orgs []orgEntry
-	if err := json.Unmarshal(data, &orgs); err != nil {
-		log.Fatalf("failed to parse organizations at startup: %v", err)
-	}
-	if len(orgs) == 0 {
-		log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
-	}
-	c.SetOrgID(strconv.Itoa(orgs[0].ID))
 
 	s := server.NewMCPServer("poltio", version)
 
@@ -1220,7 +1227,7 @@ func main() {
 		"switch_organization",
 		mcp.WithDescription("Switch the active organization context. All subsequent tool calls will operate under the selected organization."),
 		mcp.WithNumber("id", mcp.Description("Organization ID (from list_organizations)"), mcp.Required()),
-	), tools.SwitchOrganization(c))
+	), tools.SwitchOrganization(c, nil))
 
 	s.AddTool(mcp.NewTool(
 		"get_organization",
@@ -1313,7 +1320,7 @@ func main() {
 		mcp.WithString("period", mcp.Description("Billing period: month or year"), mcp.Required()),
 	), tools.CreateSubscription(c))
 
-	if port := os.Getenv("PORT"); port != "" {
+	if port != "" {
 		httpServer := server.NewStreamableHTTPServer(
 			s,
 			server.WithEndpointPath("/mcp"),
