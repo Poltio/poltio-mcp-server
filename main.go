@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/Poltio/poltio-mcp-server/client"
 	"github.com/Poltio/poltio-mcp-server/oauth"
+	"github.com/Poltio/poltio-mcp-server/store"
 	"github.com/Poltio/poltio-mcp-server/tools"
 )
 
@@ -1334,6 +1336,32 @@ func main() {
 			}
 		}
 
+		dbPath := os.Getenv("DATABASE_PATH")
+		if dbPath == "" {
+			dbPath = "bridge.db"
+		}
+		db, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("bridge mode: open store: %v", err)
+		}
+		defer db.Close()
+
+		if _, err := store.KeyFromEnv(); err != nil {
+			log.Fatalf("bridge mode: %v", err)
+		}
+
+		// Sweep goroutine: hourly cleanup of expired clients, pending grants, and needs_reconnect grants.
+		go func() {
+			for range time.NewTicker(time.Hour).C {
+				n, err := db.SweepGrants(10*time.Minute, 30*24*time.Hour)
+				if err != nil {
+					log.Printf("sweep error: %v", err)
+				} else {
+					log.Printf("sweep: deleted %d expired records", n)
+				}
+			}
+		}()
+
 		prmHandler, asmHandler := oauth.MetadataHandlers(serverURL)
 
 		mcpServer := server.NewStreamableHTTPServer(
@@ -1345,6 +1373,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/.well-known/oauth-protected-resource", prmHandler)
 		mux.HandleFunc("/.well-known/oauth-authorization-server", asmHandler)
+		mux.HandleFunc("/register", oauth.RegisterHandler(db, oauth.RegisterConfig{}))
 		// /mcp: require Authorization header; full token validation added in U7
 		mux.Handle("/mcp", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
 		mux.Handle("/mcp/", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
