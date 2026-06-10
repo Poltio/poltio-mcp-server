@@ -1455,6 +1455,9 @@ func main() {
 				return next(ctx, req)
 			}
 		})
+		// Reconnect middleware: on ErrPoltioUnauthorized, mark the grant needs_reconnect and
+		// return a user-facing error; on ErrPoltioUnavailable, return a transient error.
+		s.Use(oauth.ReconnectMiddleware(db))
 
 		prmHandler, asmHandler := oauth.MetadataHandlers(serverURL)
 
