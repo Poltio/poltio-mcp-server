@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,6 +23,13 @@ var version = "dev"
 
 type orgEntry struct {
 	ID int `json:"id"`
+}
+
+// dbOrgSetter persists per-session org overrides to the grant store in bridge mode.
+type dbOrgSetter struct{ db *store.Store }
+
+func (d *dbOrgSetter) SetOrgOverride(ctx context.Context, grantID, orgID string) error {
+	return d.db.SetOrgOverride(grantID, orgID)
 }
 
 func main() {
@@ -52,6 +60,67 @@ func main() {
 		c.SetOrgID(strconv.Itoa(orgs[0].ID))
 	}
 
+	// orgSetter is set to a db-backed implementation inside the bridge block (port != "").
+	// Tool registrations capture it by closure; it is read at call time, so the late
+	// assignment is visible to all handlers before any requests arrive.
+	var orgSetter tools.OrgOverrideSetter
+
+	// mfn is a local type alias to keep the per-request wrapper lines short.
+	type mfn = func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+
+	// cc wraps a ContentClient tool factory so the per-request client from context is used
+	// in bridge mode; falls back to the singleton c in stdio mode.
+	cc := func(f func(tools.ContentClient) mfn) mfn {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if pc, err := client.FromContext(ctx); err == nil {
+				return f(pc)(ctx, req)
+			}
+			if c != nil {
+				return f(c)(ctx, req)
+			}
+			return mcp.NewToolResultError("bridge: no client available"), nil
+		}
+	}
+
+	// sc wraps a StatsClient tool factory.
+	sc := func(f func(tools.StatsClient) mfn) mfn {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if pc, err := client.FromContext(ctx); err == nil {
+				return f(pc)(ctx, req)
+			}
+			if c != nil {
+				return f(c)(ctx, req)
+			}
+			return mcp.NewToolResultError("bridge: no client available"), nil
+		}
+	}
+
+	// uc wraps an UploadClient tool factory.
+	uc := func(f func(tools.UploadClient) mfn) mfn {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if pc, err := client.FromContext(ctx); err == nil {
+				return f(pc)(ctx, req)
+			}
+			if c != nil {
+				return f(c)(ctx, req)
+			}
+			return mcp.NewToolResultError("bridge: no client available"), nil
+		}
+	}
+
+	// oc wraps an OrgClient tool factory.
+	oc := func(f func(tools.OrgClient) mfn) mfn {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if pc, err := client.FromContext(ctx); err == nil {
+				return f(pc)(ctx, req)
+			}
+			if c != nil {
+				return f(c)(ctx, req)
+			}
+			return mcp.NewToolResultError("bridge: no client available"), nil
+		}
+	}
+
 	s := server.NewMCPServer("poltio", version)
 
 	// ── Content ──────────────────────────────────────────────────────────────
@@ -64,13 +133,13 @@ func main() {
 		mcp.WithString("q", mcp.Description("Search query against title and description")),
 		mcp.WithString("order", mcp.Description("Sort field: created_at (default), updated_at, vote_count, voter_count, type, id, end_date")),
 		mcp.WithString("sort", mcp.Description("Sort direction: desc (default) or asc")),
-	), tools.ListContent(c))
+	), cc(tools.ListContent))
 
 	s.AddTool(mcp.NewTool(
 		"get_content",
 		mcp.WithDescription("Get a single Poltio content item with its metrics."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.GetContent(c))
+	), cc(tools.GetContent))
 
 	s.AddTool(mcp.NewTool(
 		"create_content",
@@ -105,13 +174,13 @@ func main() {
 		mcp.WithNumber("end_date_hour", mcp.Description("Auto-finish content after this many hours")),
 		mcp.WithNumber("end_date_minute", mcp.Description("Auto-finish content after this many minutes")),
 		mcp.WithString("attributes_json", mcp.Description(`Advanced settings as a JSON object. Fields: cal_formula, gives_feedback, show_timer, display_results, pool_question_count, time_limit, recom_title, noindex, canonical, redirect, keywords`)),
-	), tools.CreateContent(c))
+	), cc(tools.CreateContent))
 
 	s.AddTool(mcp.NewTool(
 		"publish_content",
 		mcp.WithDescription("Publish a draft Poltio content item, making it publicly accessible."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.PublishContent(c))
+	), cc(tools.PublishContent))
 
 	s.AddTool(mcp.NewTool(
 		"list_drafts",
@@ -122,7 +191,7 @@ func main() {
 		mcp.WithString("q", mcp.Description("Search query against title and description")),
 		mcp.WithString("order", mcp.Description("Sort field: created_at (default), updated_at, vote_count, voter_count, type, id, end_date")),
 		mcp.WithString("sort", mcp.Description("Sort direction: desc (default) or asc")),
-	), tools.ListDrafts(c))
+	), cc(tools.ListDrafts))
 
 	s.AddTool(mcp.NewTool(
 		"update_content",
@@ -158,42 +227,42 @@ func main() {
 		mcp.WithNumber("end_date_hour", mcp.Description("Auto-finish after this many hours")),
 		mcp.WithNumber("end_date_minute", mcp.Description("Auto-finish after this many minutes")),
 		mcp.WithString("attributes_json", mcp.Description(`Advanced settings as a JSON object. Fields: cal_formula, gives_feedback, show_timer, display_results, pool_question_count, time_limit, recom_title, noindex, canonical, redirect, keywords`)),
-	), tools.UpdateContent(c))
+	), cc(tools.UpdateContent))
 
 	s.AddTool(mcp.NewTool(
 		"delete_content",
 		mcp.WithDescription("Permanently delete a Poltio content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.DeleteContent(c))
+	), cc(tools.DeleteContent))
 
 	s.AddTool(mcp.NewTool(
 		"duplicate_content",
 		mcp.WithDescription("Duplicate an existing Poltio content item into a new draft."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.DuplicateContent(c))
+	), cc(tools.DuplicateContent))
 
 	s.AddTool(mcp.NewTool(
 		"get_content_edit",
 		mcp.WithDescription("Get full editable content object including all questions, answers, results, and conditions."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.GetContentEdit(c))
+	), cc(tools.GetContentEdit))
 
 	s.AddTool(mcp.NewTool(
 		"list_templates",
 		mcp.WithDescription("List available Poltio content templates."),
-	), tools.ListTemplates(c))
+	), cc(tools.ListTemplates))
 
 	s.AddTool(mcp.NewTool(
 		"get_template",
 		mcp.WithDescription("Get a single content template with all its data."),
 		mcp.WithString("public_id", mcp.Description("Template public identifier"), mcp.Required()),
-	), tools.GetTemplate(c))
+	), cc(tools.GetTemplate))
 
 	s.AddTool(mcp.NewTool(
 		"use_template",
 		mcp.WithDescription("Clone a content template into a new draft content item in your account."),
 		mcp.WithString("public_id", mcp.Description("Template public identifier"), mcp.Required()),
-	), tools.UseTemplate(c))
+	), cc(tools.UseTemplate))
 
 	s.AddTool(mcp.NewTool(
 		"get_content_results",
@@ -203,7 +272,7 @@ func main() {
 		mcp.WithNumber("per_page", mcp.Description("Results per page, 1-100 (default: 12)")),
 		mcp.WithString("order_by", mcp.Description("Sort field: position (default), id, click_count, counter")),
 		mcp.WithString("order_dir", mcp.Description("Sort direction: desc (default) or asc")),
-	), tools.GetContentResults(c))
+	), cc(tools.GetContentResults))
 
 	s.AddTool(mcp.NewTool(
 		"get_content_sessions",
@@ -211,7 +280,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
-	), tools.GetContentSessions(c))
+	), cc(tools.GetContentSessions))
 
 	s.AddTool(mcp.NewTool(
 		"get_content_metrics",
@@ -221,7 +290,7 @@ func main() {
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
 		mcp.WithString("metrics", mcp.Description("Comma-separated metric names: view,vote,voter,start,finish,conversion (defaults to all)")),
-	), tools.GetContentMetrics(c))
+	), cc(tools.GetContentMetrics))
 
 	s.AddTool(mcp.NewTool(
 		"get_vote_sources",
@@ -229,7 +298,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetVoteSources(c))
+	), cc(tools.GetVoteSources))
 
 	s.AddTool(mcp.NewTool(
 		"get_sankey",
@@ -237,7 +306,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetSankey(c))
+	), cc(tools.GetSankey))
 
 	s.AddTool(mcp.NewTool(
 		"get_sankey_users",
@@ -247,13 +316,13 @@ func main() {
 		mcp.WithString("to_id", mcp.Description("Target node ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetSankeyUsers(c))
+	), cc(tools.GetSankeyUsers))
 
 	s.AddTool(mcp.NewTool(
 		"get_searchable_fields",
 		mcp.WithDescription("Get all searchable and filterable fields defined for a searchable content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.GetSearchableFields(c))
+	), cc(tools.GetSearchableFields))
 
 	s.AddTool(mcp.NewTool(
 		"get_session_urls",
@@ -261,7 +330,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetSessionUrls(c))
+	), cc(tools.GetSessionUrls))
 
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -270,7 +339,7 @@ func main() {
 		mcp.WithString("image_base64", mcp.Description("Base64-encoded image data (no data URI prefix, just the raw base64 string)"), mcp.Required()),
 		mcp.WithString("ext", mcp.Description("File extension without the dot, e.g. png, jpg, webp"), mcp.Required()),
 		mcp.WithString("bucket", mcp.Description("Optional storage bucket name")),
-	), tools.UploadImage(c))
+	), uc(tools.UploadImage))
 
 	// ── Questions ─────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -296,7 +365,7 @@ func main() {
 		mcp.WithNumber("position", mcp.Description("Numeric value for the Question position in the content")),
 		mcp.WithString("conditions", mcp.Description("Comma seperated list of Answer IDs to use as display conditions")),
 		mcp.WithNumber("condition_reverse", mcp.Description("Indicates if the conditions should be positive or negative")),
-	), tools.AddQuestion(c))
+	), cc(tools.AddQuestion))
 
 	s.AddTool(mcp.NewTool(
 		"update_question",
@@ -322,14 +391,14 @@ func main() {
 		mcp.WithNumber("position", mcp.Description("Numeric value for the Question position in the content")),
 		mcp.WithString("conditions", mcp.Description("Comma seperated list of Answer IDs to use as display conditions")),
 		mcp.WithNumber("condition_reverse", mcp.Description("Indicates if the conditions should be positive or negative")),
-	), tools.UpdateQuestion(c))
+	), cc(tools.UpdateQuestion))
 
 	s.AddTool(mcp.NewTool(
 		"delete_question",
 		mcp.WithDescription("Delete a question from a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-	), tools.DeleteQuestion(c))
+	), cc(tools.DeleteQuestion))
 
 	// ── Answers ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -350,7 +419,7 @@ func main() {
 		mcp.WithNumber("max_vote", mcp.Description("If set, disables this answer once it reaches this vote count")),
 		mcp.WithString("addon", mcp.Description("Additional info shared with GTM and PixelCodes after user selects this answer")),
 		mcp.WithString("disabled_msg", mcp.Description("Custom message shown when this answer is disabled")),
-	), tools.AddAnswer(c))
+	), cc(tools.AddAnswer))
 
 	s.AddTool(mcp.NewTool(
 		"add_answers_bulk",
@@ -359,7 +428,7 @@ func main() {
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("answers", mcp.Description("Answer texts, one per line"), mcp.Required()),
 		mcp.WithNumber("remove_existing", mcp.Description("Remove existing answers before adding: 0 (default) or 1")),
-	), tools.AddAnswersBulk(c))
+	), cc(tools.AddAnswersBulk))
 
 	s.AddTool(mcp.NewTool(
 		"update_answer",
@@ -380,7 +449,7 @@ func main() {
 		mcp.WithNumber("max_vote", mcp.Description("If set, disables this answer once it reaches this vote count")),
 		mcp.WithString("addon", mcp.Description("Additional info shared with GTM and PixelCodes after user selects this answer")),
 		mcp.WithString("disabled_msg", mcp.Description("Custom message shown when this answer is disabled")),
-	), tools.UpdateAnswer(c))
+	), cc(tools.UpdateAnswer))
 
 	s.AddTool(mcp.NewTool(
 		"delete_answer",
@@ -388,7 +457,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
-	), tools.DeleteAnswer(c))
+	), cc(tools.DeleteAnswer))
 
 	s.AddTool(mcp.NewTool(
 		"clone_answers",
@@ -396,14 +465,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("source_question_id", mcp.Description("Question to copy answers from"), mcp.Required()),
 		mcp.WithNumber("target_question_id", mcp.Description("Question to copy answers to (existing answers will be removed)"), mcp.Required()),
-	), tools.CloneAnswers(c))
+	), cc(tools.CloneAnswers))
 
 	s.AddTool(mcp.NewTool(
 		"get_answer_order",
 		mcp.WithDescription("Get the current answer order (positions) for a question."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-	), tools.GetAnswerOrder(c))
+	), cc(tools.GetAnswerOrder))
 
 	s.AddTool(mcp.NewTool(
 		"update_answer_order",
@@ -411,7 +480,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("answers", mcp.Description(`JSON array of position objects, e.g. [{"id":1,"position":2},{"id":2,"position":1}]`), mcp.Required()),
-	), tools.UpdateAnswerOrder(c))
+	), cc(tools.UpdateAnswerOrder))
 
 	// ── Results ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -430,7 +499,7 @@ func main() {
 		mcp.WithNumber("min_c", mcp.Description("Minimum score to reach this result (score-based content)")),
 		mcp.WithNumber("max_c", mcp.Description("Maximum score for this result (score-based content)")),
 		mcp.WithNumber("is_default", mcp.Description("Make this a catch-all default result: 0 (default) or 1")),
-	), tools.AddResult(c))
+	), cc(tools.AddResult))
 
 	s.AddTool(mcp.NewTool(
 		"update_result",
@@ -449,14 +518,14 @@ func main() {
 		mcp.WithNumber("min_c", mcp.Description("Minimum score for this result")),
 		mcp.WithNumber("max_c", mcp.Description("Maximum score for this result")),
 		mcp.WithNumber("is_default", mcp.Description("Make this a catch-all default result: 0 or 1")),
-	), tools.UpdateResult(c))
+	), cc(tools.UpdateResult))
 
 	s.AddTool(mcp.NewTool(
 		"delete_result",
 		mcp.WithDescription("Delete a result screen from a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
-	), tools.DeleteResult(c))
+	), cc(tools.DeleteResult))
 
 	s.AddTool(mcp.NewTool(
 		"set_answer_result_point",
@@ -466,14 +535,14 @@ func main() {
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
 		mcp.WithNumber("content_result_id", mcp.Description("Result ID"), mcp.Required()),
 		mcp.WithNumber("point", mcp.Description("Point value (≥ 0)"), mcp.Required()),
-	), tools.SetAnswerResultPoint(c))
+	), cc(tools.SetAnswerResultPoint))
 
 	// ── Questions — conditions and order ─────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"get_content_conditions",
 		mcp.WithDescription("List all questions in a content item that have display conditions attached."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.GetContentConditions(c))
+	), cc(tools.GetContentConditions))
 
 	s.AddTool(mcp.NewTool(
 		"add_question_condition",
@@ -482,7 +551,7 @@ func main() {
 		mcp.WithNumber("question_id", mcp.Description("Question to add condition to"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID that triggers the condition"), mcp.Required()),
 		mcp.WithNumber("condition_reverse", mcp.Description("Invert the condition (hide instead of show): 0 (default) or 1")),
-	), tools.AddQuestionCondition(c))
+	), cc(tools.AddQuestionCondition))
 
 	s.AddTool(mcp.NewTool(
 		"remove_question_condition",
@@ -490,27 +559,27 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID to remove from conditions"), mcp.Required()),
-	), tools.RemoveQuestionCondition(c))
+	), cc(tools.RemoveQuestionCondition))
 
 	s.AddTool(mcp.NewTool(
 		"clear_question_conditions",
 		mcp.WithDescription("Remove all display conditions from a question."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-	), tools.ClearQuestionConditions(c))
+	), cc(tools.ClearQuestionConditions))
 
 	s.AddTool(mcp.NewTool(
 		"get_question_order",
 		mcp.WithDescription("Get the current question order (positions) for a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.GetQuestionOrder(c))
+	), cc(tools.GetQuestionOrder))
 
 	s.AddTool(mcp.NewTool(
 		"update_question_order",
 		mcp.WithDescription("Reorder questions in a content item. Provide a JSON array of {id, position} objects."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithString("questions", mcp.Description(`JSON array of position objects, e.g. [{"id":1,"position":2},{"id":2,"position":1}]`), mcp.Required()),
-	), tools.UpdateQuestionOrder(c))
+	), cc(tools.UpdateQuestionOrder))
 
 	s.AddTool(mcp.NewTool(
 		"get_question_inputs",
@@ -521,7 +590,7 @@ func main() {
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
 		mcp.WithString("order", mcp.Description("Sort field: created_at (default), voter_id, id")),
 		mcp.WithString("sort", mcp.Description("Sort direction: desc (default) or asc")),
-	), tools.GetQuestionInputs(c))
+	), cc(tools.GetQuestionInputs))
 
 	// ── Lead attachment ───────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -529,13 +598,13 @@ func main() {
 		mcp.WithDescription("Attach a lead form to the cover screen of a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("lead_id", mcp.Description("Lead ID to attach"), mcp.Required()),
-	), tools.SetContentLead(c))
+	), cc(tools.SetContentLead))
 
 	s.AddTool(mcp.NewTool(
 		"remove_content_lead",
 		mcp.WithDescription("Remove the lead form from the cover screen of a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.RemoveContentLead(c))
+	), cc(tools.RemoveContentLead))
 
 	s.AddTool(mcp.NewTool(
 		"set_question_lead",
@@ -543,14 +612,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("lead_id", mcp.Description("Lead ID to attach"), mcp.Required()),
-	), tools.SetQuestionLead(c))
+	), cc(tools.SetQuestionLead))
 
 	s.AddTool(mcp.NewTool(
 		"remove_question_lead",
 		mcp.WithDescription("Remove the lead form from all answers of a question."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-	), tools.RemoveQuestionLead(c))
+	), cc(tools.RemoveQuestionLead))
 
 	s.AddTool(mcp.NewTool(
 		"set_answer_lead",
@@ -559,7 +628,7 @@ func main() {
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
 		mcp.WithNumber("lead_id", mcp.Description("Lead ID to attach"), mcp.Required()),
-	), tools.SetAnswerLead(c))
+	), cc(tools.SetAnswerLead))
 
 	s.AddTool(mcp.NewTool(
 		"remove_answer_lead",
@@ -567,7 +636,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
-	), tools.RemoveAnswerLead(c))
+	), cc(tools.RemoveAnswerLead))
 
 	s.AddTool(mcp.NewTool(
 		"set_result_lead",
@@ -575,14 +644,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
 		mcp.WithNumber("lead_id", mcp.Description("Lead ID to attach"), mcp.Required()),
-	), tools.SetResultLead(c))
+	), cc(tools.SetResultLead))
 
 	s.AddTool(mcp.NewTool(
 		"remove_result_lead",
 		mcp.WithDescription("Remove the lead form from a result screen."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
-	), tools.RemoveResultLead(c))
+	), cc(tools.RemoveResultLead))
 
 	// ── Lead management ───────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -590,7 +659,7 @@ func main() {
 		mcp.WithDescription("List lead campaigns for this organization."),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.ListLeads(c))
+	), cc(tools.ListLeads))
 
 	s.AddTool(mcp.NewTool(
 		"create_lead",
@@ -621,13 +690,13 @@ func main() {
 		mcp.WithString("tc2_approve_button_label", mcp.Description("Custom button label for the second accept section")),
 		mcp.WithString("tc2_reject_button_label", mcp.Description("Custom button label for the second reject section")),
 		mcp.WithString("custom_labels_json", mcp.Description(`Custom input field labels as JSON, e.g. {"email":"E-mail","gsm":"Phone"}`)),
-	), tools.CreateLead(c))
+	), cc(tools.CreateLead))
 
 	s.AddTool(mcp.NewTool(
 		"get_lead",
 		mcp.WithDescription("Get a single lead campaign by ID."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
-	), tools.GetLead(c))
+	), cc(tools.GetLead))
 
 	s.AddTool(mcp.NewTool(
 		"update_lead",
@@ -659,13 +728,13 @@ func main() {
 		mcp.WithString("tc2_approve_button_label", mcp.Description("Custom button label for the second accept section")),
 		mcp.WithString("tc2_reject_button_label", mcp.Description("Custom button label for the second reject section")),
 		mcp.WithString("custom_labels_json", mcp.Description(`Custom input field labels as JSON, e.g. {"email":"E-mail","gsm":"Phone"}`)),
-	), tools.UpdateLead(c))
+	), cc(tools.UpdateLead))
 
 	s.AddTool(mcp.NewTool(
 		"delete_lead",
 		mcp.WithDescription("Delete a lead campaign."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
-	), tools.DeleteLead(c))
+	), cc(tools.DeleteLead))
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_inputs",
@@ -673,7 +742,7 @@ func main() {
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetLeadInputs(c))
+	), cc(tools.GetLeadInputs))
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_logs",
@@ -681,7 +750,7 @@ func main() {
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetLeadLogs(c))
+	), cc(tools.GetLeadLogs))
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_codes",
@@ -689,7 +758,7 @@ func main() {
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetLeadCodes(c))
+	), cc(tools.GetLeadCodes))
 
 	s.AddTool(mcp.NewTool(
 		"add_lead_codes",
@@ -698,13 +767,13 @@ func main() {
 		mcp.WithString("codes", mcp.Description("Coupon codes, one per line"), mcp.Required()),
 		mcp.WithNumber("single_use", mcp.Description("Each code can only be used once: 0 (default) or 1")),
 		mcp.WithNumber("remove_existing", mcp.Description("Remove existing codes first: 0 (default) or 1")),
-	), tools.AddLeadCodes(c))
+	), cc(tools.AddLeadCodes))
 
 	s.AddTool(mcp.NewTool(
 		"delete_all_lead_codes",
 		mcp.WithDescription("Remove ALL coupon codes from a lead campaign."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
-	), tools.DeleteAllLeadCodes(c))
+	), cc(tools.DeleteAllLeadCodes))
 
 	s.AddTool(mcp.NewTool(
 		"update_lead_code",
@@ -713,14 +782,14 @@ func main() {
 		mcp.WithString("lead_coupon_code_id", mcp.Description("Coupon code ID"), mcp.Required()),
 		mcp.WithString("code", mcp.Description("New code value"), mcp.Required()),
 		mcp.WithNumber("single_use", mcp.Description("Single-use flag: 0 or 1")),
-	), tools.UpdateLeadCode(c))
+	), cc(tools.UpdateLeadCode))
 
 	s.AddTool(mcp.NewTool(
 		"delete_lead_code",
 		mcp.WithDescription("Delete a single coupon code from a lead campaign."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithString("lead_coupon_code_id", mcp.Description("Coupon code ID"), mcp.Required()),
-	), tools.DeleteLeadCode(c))
+	), cc(tools.DeleteLeadCode))
 
 	// ── Pixel codes ───────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -728,14 +797,14 @@ func main() {
 		mcp.WithDescription("List pixel code snippets for this organization."),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.ListPixelCodes(c))
+	), cc(tools.ListPixelCodes))
 
 	s.AddTool(mcp.NewTool(
 		"create_pixel_code",
 		mcp.WithDescription("Create a new pixel code snippet (iframe, img, or script tag HTML)."),
 		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
 		mcp.WithString("code", mcp.Description("HTML snippet containing the pixel code"), mcp.Required()),
-	), tools.CreatePixelCode(c))
+	), cc(tools.CreatePixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"update_pixel_code",
@@ -743,26 +812,26 @@ func main() {
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Human-readable name")),
 		mcp.WithString("code", mcp.Description("HTML snippet")),
-	), tools.UpdatePixelCode(c))
+	), cc(tools.UpdatePixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"delete_pixel_code",
 		mcp.WithDescription("Delete a pixel code snippet."),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.DeletePixelCode(c))
+	), cc(tools.DeletePixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"set_content_pixel_code",
 		mcp.WithDescription("Attach a pixel code to the cover screen of a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.SetContentPixelCode(c))
+	), cc(tools.SetContentPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"remove_content_pixel_code",
 		mcp.WithDescription("Remove the pixel code from the cover screen of a content item."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-	), tools.RemoveContentPixelCode(c))
+	), cc(tools.RemoveContentPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"set_question_pixel_code",
@@ -770,14 +839,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.SetQuestionPixelCode(c))
+	), cc(tools.SetQuestionPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"remove_question_pixel_code",
 		mcp.WithDescription("Remove the pixel code from all answers of a question."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-	), tools.RemoveQuestionPixelCode(c))
+	), cc(tools.RemoveQuestionPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"set_answer_pixel_code",
@@ -786,7 +855,7 @@ func main() {
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.SetAnswerPixelCode(c))
+	), cc(tools.SetAnswerPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"remove_answer_pixel_code",
@@ -794,7 +863,7 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
-	), tools.RemoveAnswerPixelCode(c))
+	), cc(tools.RemoveAnswerPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"set_result_pixel_code",
@@ -802,14 +871,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.SetResultPixelCode(c))
+	), cc(tools.SetResultPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"remove_result_pixel_code",
 		mcp.WithDescription("Remove the view pixel code from a result screen."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
-	), tools.RemoveResultPixelCode(c))
+	), cc(tools.RemoveResultPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"set_result_click_pixel_code",
@@ -817,14 +886,14 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
-	), tools.SetResultClickPixelCode(c))
+	), cc(tools.SetResultClickPixelCode))
 
 	s.AddTool(mcp.NewTool(
 		"remove_result_click_pixel_code",
 		mcp.WithDescription("Remove the click pixel code from a result screen."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
-	), tools.RemoveResultClickPixelCode(c))
+	), cc(tools.RemoveResultClickPixelCode))
 
 	// ── Themes ────────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -832,44 +901,44 @@ func main() {
 		mcp.WithDescription("List themes for this organization."),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.ListThemes(c))
+	), cc(tools.ListThemes))
 
 	s.AddTool(mcp.NewTool(
 		"get_default_theme",
 		mcp.WithDescription("Get the default theme values to use as a base when creating a new theme."),
-	), tools.GetDefaultTheme(c))
+	), cc(tools.GetDefaultTheme))
 
 	s.AddTool(mcp.NewTool(
 		"get_theme",
 		mcp.WithDescription("Get a single theme by ID."),
 		mcp.WithNumber("theme_id", mcp.Description("Theme ID"), mcp.Required()),
-	), tools.GetTheme(c))
+	), cc(tools.GetTheme))
 
 	s.AddTool(mcp.NewTool(
 		"create_theme",
 		mcp.WithDescription("Create a new theme. Call get_default_theme first to discover available fields, then pass overrides as fields_json."),
 		mcp.WithString("name", mcp.Description("Internal name for the theme"), mcp.Required()),
 		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to set (colors, fonts, etc.)")),
-	), tools.CreateTheme(c))
+	), cc(tools.CreateTheme))
 
 	s.AddTool(mcp.NewTool(
 		"update_theme",
 		mcp.WithDescription("Update an existing theme's fields."),
 		mcp.WithNumber("theme_id", mcp.Description("Theme ID"), mcp.Required()),
 		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to update"), mcp.Required()),
-	), tools.UpdateTheme(c))
+	), cc(tools.UpdateTheme))
 
 	s.AddTool(mcp.NewTool(
 		"delete_theme",
 		mcp.WithDescription("Delete a theme (fails if the theme is currently in use)."),
 		mcp.WithNumber("theme_id", mcp.Description("Theme ID"), mcp.Required()),
-	), tools.DeleteTheme(c))
+	), cc(tools.DeleteTheme))
 
 	// ── Dashboard ─────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"get_dashboard",
 		mcp.WithDescription("Get account dashboard data including recent content, profile, and aggregate counters."),
-	), tools.GetDashboard(c))
+	), cc(tools.GetDashboard))
 
 	s.AddTool(mcp.NewTool(
 		"get_dashboard_summary",
@@ -877,7 +946,7 @@ func main() {
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
 		mcp.WithNumber("take", mcp.Description("Number of items to return")),
-	), tools.GetDashboardSummary(c))
+	), cc(tools.GetDashboardSummary))
 
 	s.AddTool(mcp.NewTool(
 		"get_dashboard_metrics",
@@ -886,7 +955,7 @@ func main() {
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
 		mcp.WithString("metrics", mcp.Description("Comma-separated metric names (defaults to all)")),
-	), tools.GetDashboardMetrics(c))
+	), cc(tools.GetDashboardMetrics))
 
 	// ── Sheet Hooks ───────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -895,7 +964,7 @@ func main() {
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
 		mcp.WithString("public_id", mcp.Description("Filter by content public_id")),
-	), tools.ListSheetHooks(c))
+	), cc(tools.ListSheetHooks))
 
 	s.AddTool(mcp.NewTool(
 		"create_sheet_hook",
@@ -904,13 +973,13 @@ func main() {
 		mcp.WithString("sheet_id", mcp.Description("Google Sheet ID (from the sheet URL)"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Internal name for the hook")),
 		mcp.WithNumber("is_active", mcp.Description("Active state: 0 or 1 (default: 1)")),
-	), tools.CreateSheetHook(c))
+	), cc(tools.CreateSheetHook))
 
 	s.AddTool(mcp.NewTool(
 		"get_sheet_hook",
 		mcp.WithDescription("Get details of a Google Sheet hook."),
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
-	), tools.GetSheetHook(c))
+	), cc(tools.GetSheetHook))
 
 	s.AddTool(mcp.NewTool(
 		"update_sheet_hook",
@@ -920,13 +989,13 @@ func main() {
 		mcp.WithString("name", mcp.Description("New internal name")),
 		mcp.WithString("public_id", mcp.Description("Content public identifier")),
 		mcp.WithNumber("is_active", mcp.Description("Active state: 0 or 1")),
-	), tools.UpdateSheetHook(c))
+	), cc(tools.UpdateSheetHook))
 
 	s.AddTool(mcp.NewTool(
 		"delete_sheet_hook",
 		mcp.WithDescription("Delete a Google Sheet hook."),
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
-	), tools.DeleteSheetHook(c))
+	), cc(tools.DeleteSheetHook))
 
 	s.AddTool(mcp.NewTool(
 		"get_sheet_hook_logs",
@@ -934,7 +1003,7 @@ func main() {
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetSheetHookLogs(c))
+	), cc(tools.GetSheetHookLogs))
 
 	// ── Webhooks ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -943,7 +1012,7 @@ func main() {
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
 		mcp.WithString("public_id", mcp.Description("Filter by content public_id")),
-	), tools.ListWebhooks(c))
+	), cc(tools.ListWebhooks))
 
 	s.AddTool(mcp.NewTool(
 		"create_webhook",
@@ -962,13 +1031,13 @@ func main() {
 		mcp.WithString("oauth_login_endpoint", mcp.Description("OAuth token API endpoint (required with use_oauth)")),
 		mcp.WithString("oauth_request_body_json", mcp.Description("Additional OAuth request body fields as JSON")),
 		mcp.WithString("oauth_request_headers_json", mcp.Description("Additional OAuth request headers as JSON")),
-	), tools.CreateWebhook(c))
+	), cc(tools.CreateWebhook))
 
 	s.AddTool(mcp.NewTool(
 		"get_webhook",
 		mcp.WithDescription("Get details of a webhook."),
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
-	), tools.GetWebhook(c))
+	), cc(tools.GetWebhook))
 
 	s.AddTool(mcp.NewTool(
 		"update_webhook",
@@ -988,13 +1057,13 @@ func main() {
 		mcp.WithString("oauth_login_endpoint", mcp.Description("OAuth token API endpoint")),
 		mcp.WithString("oauth_request_body_json", mcp.Description("Additional OAuth request body fields as JSON")),
 		mcp.WithString("oauth_request_headers_json", mcp.Description("Additional OAuth request headers as JSON")),
-	), tools.UpdateWebhook(c))
+	), cc(tools.UpdateWebhook))
 
 	s.AddTool(mcp.NewTool(
 		"delete_webhook",
 		mcp.WithDescription("Delete a webhook."),
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
-	), tools.DeleteWebhook(c))
+	), cc(tools.DeleteWebhook))
 
 	s.AddTool(mcp.NewTool(
 		"get_webhook_logs",
@@ -1002,7 +1071,7 @@ func main() {
 		mcp.WithNumber("hook_id", mcp.Description("Hook ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.GetWebhookLogs(c))
+	), cc(tools.GetWebhookLogs))
 
 	// ── Vote / Stats ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1012,7 +1081,7 @@ func main() {
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
 		mcp.WithNumber("download", mcp.Description("Request report as a file via email: 0 or 1 (default: 1)")),
-	), tools.GetVoters(c))
+	), sc(tools.GetVoters))
 
 	s.AddTool(mcp.NewTool(
 		"get_conversion_time_stats",
@@ -1020,7 +1089,7 @@ func main() {
 		mcp.WithNumber("content_id", mcp.Description("Filter to a specific content item by its integer ID (optional)")),
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
-	), tools.GetConversionTimeStats(c))
+	), sc(tools.GetConversionTimeStats))
 
 	// ── Reports ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1028,7 +1097,7 @@ func main() {
 		mcp.WithDescription("List downloadable report requests."),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
-	), tools.ListReports(c))
+	), cc(tools.ListReports))
 
 	s.AddTool(mcp.NewTool(
 		"create_report",
@@ -1036,13 +1105,13 @@ func main() {
 		mcp.WithString("report", mcp.Description("Report type: content-sessions or content-voters"), mcp.Required()),
 		mcp.WithString("public_id", mcp.Description("Content public_id for content-scoped reports")),
 		mcp.WithNumber("base_id", mcp.Description("Base ID (required when no public_id is given)")),
-	), tools.CreateReport(c))
+	), cc(tools.CreateReport))
 
 	// ── Data Sources ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_data_sources",
 		mcp.WithDescription("List data sources connected to this account."),
-	), tools.ListDataSources(c))
+	), cc(tools.ListDataSources))
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
@@ -1051,33 +1120,33 @@ func main() {
 		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
 		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
 		mcp.WithString("notes", mcp.Description("Optional notes for the review team")),
-	), tools.CreateDataSource(c))
+	), cc(tools.CreateDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"delete_data_source",
 		mcp.WithDescription("Remove a data source submission."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
-	), tools.DeleteDataSource(c))
+	), cc(tools.DeleteDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"add_data_source_note",
 		mcp.WithDescription("Add a note to a data source request (for communication with the review team)."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		mcp.WithString("notes", mcp.Description("Note text"), mcp.Required()),
-	), tools.AddDataSourceNote(c))
+	), cc(tools.AddDataSourceNote))
 
 	s.AddTool(mcp.NewTool(
 		"upload_data_source",
 		mcp.WithDescription("Upload a file (JSON, XML, CSV, or TXT) as a new data source."),
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded file content"), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename with extension, e.g. feed.json, data.csv"), mcp.Required()),
-	), tools.UploadDataSource(c))
+	), uc(tools.UploadDataSource))
 
 	// ── Domains ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_domains",
 		mcp.WithDescription("List custom domains configured for this account."),
-	), tools.ListDomains(c))
+	), cc(tools.ListDomains))
 
 	s.AddTool(mcp.NewTool(
 		"create_domain",
@@ -1085,7 +1154,7 @@ func main() {
 		mcp.WithString("domain", mcp.Description("Domain or subdomain, e.g. poltio.yourdomain.com"), mcp.Required()),
 		mcp.WithNumber("is_default", mcp.Description("Set as default domain: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the domain: 0 or 1")),
-	), tools.CreateDomain(c))
+	), cc(tools.CreateDomain))
 
 	s.AddTool(mcp.NewTool(
 		"update_domain",
@@ -1094,13 +1163,13 @@ func main() {
 		mcp.WithString("domain", mcp.Description("New domain value")),
 		mcp.WithNumber("is_default", mcp.Description("Set as default: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable/disable: 0 or 1")),
-	), tools.UpdateDomain(c))
+	), cc(tools.UpdateDomain))
 
 	s.AddTool(mcp.NewTool(
 		"delete_domain",
 		mcp.WithDescription("Delete a custom domain."),
 		mcp.WithNumber("domain_id", mcp.Description("Domain ID"), mcp.Required()),
-	), tools.DeleteDomain(c))
+	), cc(tools.DeleteDomain))
 
 	// ── Widgets ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1109,7 +1178,7 @@ func main() {
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
 		mcp.WithString("public_id", mcp.Description("Filter by content public_id")),
-	), tools.ListWidgets(c))
+	), cc(tools.ListWidgets))
 
 	s.AddTool(mcp.NewTool(
 		"create_widget",
@@ -1119,13 +1188,13 @@ func main() {
 		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
 		mcp.WithString("urls", mcp.Description("Comma-separated URLs for the widget")),
-	), tools.CreateWidget(c))
+	), cc(tools.CreateWidget))
 
 	s.AddTool(mcp.NewTool(
 		"get_widget",
 		mcp.WithDescription("Get a single Dynamic Widget."),
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
-	), tools.GetWidget(c))
+	), cc(tools.GetWidget))
 
 	s.AddTool(mcp.NewTool(
 		"update_widget",
@@ -1136,13 +1205,13 @@ func main() {
 		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
 		mcp.WithString("urls", mcp.Description("Comma-separated URLs for the widget")),
-	), tools.UpdateWidget(c))
+	), cc(tools.UpdateWidget))
 
 	s.AddTool(mcp.NewTool(
 		"delete_widget",
 		mcp.WithDescription("Delete an existing dynamic widget."),
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
-	), tools.DeleteWidget(c))
+	), cc(tools.DeleteWidget))
 
 	// ── Settings ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1151,7 +1220,7 @@ func main() {
 		mcp.WithString("username", mcp.Description("New unique username")),
 		mcp.WithString("email", mcp.Description("New email address (requires re-verification)")),
 		mcp.WithString("photo", mcp.Description("Profile photo file path")),
-	), tools.UpdateSettings(c))
+	), cc(tools.UpdateSettings))
 
 	s.AddTool(mcp.NewTool(
 		"update_password",
@@ -1159,52 +1228,52 @@ func main() {
 		mcp.WithString("password", mcp.Description("Current password"), mcp.Required()),
 		mcp.WithString("new_password", mcp.Description("New password"), mcp.Required()),
 		mcp.WithString("new_password_confirmation", mcp.Description("New password confirmation"), mcp.Required()),
-	), tools.UpdatePassword(c))
+	), cc(tools.UpdatePassword))
 
 	s.AddTool(mcp.NewTool(
 		"resend_verification",
 		mcp.WithDescription("Resend the account email verification link."),
-	), tools.ResendVerification(c))
+	), cc(tools.ResendVerification))
 
 	s.AddTool(mcp.NewTool(
 		"accept_terms",
 		mcp.WithDescription("Accept the Poltio terms and conditions for the current account."),
-	), tools.AcceptTerms(c))
+	), cc(tools.AcceptTerms))
 
 	s.AddTool(mcp.NewTool(
 		"setup_two_factor",
 		mcp.WithDescription("Begin two-factor authentication setup. Returns a base64 QR code image to scan with an authenticator app."),
-	), tools.SetupTwoFactor(c))
+	), cc(tools.SetupTwoFactor))
 
 	s.AddTool(mcp.NewTool(
 		"verify_two_factor",
 		mcp.WithDescription("Confirm 2FA setup with a TOTP verification code. Returns recovery codes on success."),
 		mcp.WithString("verification", mcp.Description("6-digit TOTP code from your authenticator app"), mcp.Required()),
-	), tools.VerifyTwoFactor(c))
+	), cc(tools.VerifyTwoFactor))
 
 	s.AddTool(mcp.NewTool(
 		"disable_two_factor",
 		mcp.WithDescription("Disable two-factor authentication on the current account. Requires a TOTP verification code."),
 		mcp.WithString("verification", mcp.Description("6-digit TOTP code from your authenticator app"), mcp.Required()),
-	), tools.DisableTwoFactor(c))
+	), cc(tools.DisableTwoFactor))
 
 	s.AddTool(mcp.NewTool(
 		"reset_two_factor_recovery_codes",
 		mcp.WithDescription("Regenerate 2FA recovery codes. Existing codes are invalidated. Requires a TOTP verification code."),
 		mcp.WithString("verification", mcp.Description("6-digit TOTP code from your authenticator app"), mcp.Required()),
-	), tools.ResetTwoFactorRecoveryCodes(c))
+	), cc(tools.ResetTwoFactorRecoveryCodes))
 
 	s.AddTool(mcp.NewTool(
 		"list_conversion_settings",
 		mcp.WithDescription("List conversion tracking URLs defined for this account."),
-	), tools.ListConversionSettings(c))
+	), cc(tools.ListConversionSettings))
 
 	s.AddTool(mcp.NewTool(
 		"create_conversion_setting",
 		mcp.WithDescription("Add a new checkout success URL for conversion tracking."),
 		mcp.WithString("url", mcp.Description("Checkout success page URL"), mcp.Required()),
 		mcp.WithNumber("catch_all", mcp.Description("Report all conversions: 0 or 1")),
-	), tools.CreateConversionSetting(c))
+	), cc(tools.CreateConversionSetting))
 
 	s.AddTool(mcp.NewTool(
 		"update_conversion_setting",
@@ -1212,38 +1281,46 @@ func main() {
 		mcp.WithNumber("conversion_setting_id", mcp.Description("Conversion setting ID"), mcp.Required()),
 		mcp.WithString("url", mcp.Description("New URL")),
 		mcp.WithNumber("catch_all", mcp.Description("Report all conversions: 0 or 1")),
-	), tools.UpdateConversionSetting(c))
+	), cc(tools.UpdateConversionSetting))
 
 	s.AddTool(mcp.NewTool(
 		"delete_conversion_setting",
 		mcp.WithDescription("Delete a conversion tracking URL."),
 		mcp.WithNumber("conversion_setting_id", mcp.Description("Conversion setting ID"), mcp.Required()),
-	), tools.DeleteConversionSetting(c))
+	), cc(tools.DeleteConversionSetting))
 
 	// ── Organizations ─────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_organizations",
 		mcp.WithDescription("List Poltio organizations the current user belongs to, including their role in each."),
-	), tools.ListOrganizations(c))
+	), oc(tools.ListOrganizations))
 
 	s.AddTool(mcp.NewTool(
 		"switch_organization",
 		mcp.WithDescription("Switch the active organization context. All subsequent tool calls will operate under the selected organization."),
 		mcp.WithNumber("id", mcp.Description("Organization ID (from list_organizations)"), mcp.Required()),
-	), tools.SwitchOrganization(c, nil))
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if pc, err := client.FromContext(ctx); err == nil {
+			return tools.SwitchOrganization(pc, orgSetter)(ctx, req)
+		}
+		if c != nil {
+			return tools.SwitchOrganization(c, orgSetter)(ctx, req)
+		}
+		return mcp.NewToolResultError("bridge: no client available"), nil
+	})
 
 	s.AddTool(mcp.NewTool(
 		"get_organization",
 		mcp.WithDescription("Get an organization's details including members and pending invites."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
-	), tools.GetOrganization(c))
+	), cc(tools.GetOrganization))
 
 	s.AddTool(mcp.NewTool(
 		"update_organization",
 		mcp.WithDescription("Update an organization's name."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("New organization name"), mcp.Required()),
-	), tools.UpdateOrganization(c))
+	), cc(tools.UpdateOrganization))
 
 	s.AddTool(mcp.NewTool(
 		"invite_org_member",
@@ -1251,34 +1328,34 @@ func main() {
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithString("email", mcp.Description("Email address of the user to invite"), mcp.Required()),
 		mcp.WithString("role", mcp.Description("Role to assign: admin, user, or viewer"), mcp.Required()),
-	), tools.InviteOrgMember(c))
+	), cc(tools.InviteOrgMember))
 
 	s.AddTool(mcp.NewTool(
 		"join_organization",
 		mcp.WithDescription("Join an organization using an invite token from an invitation email."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithString("token", mcp.Description("Invite token from the invitation email"), mcp.Required()),
-	), tools.JoinOrganization(c))
+	), cc(tools.JoinOrganization))
 
 	s.AddTool(mcp.NewTool(
 		"leave_organization",
 		mcp.WithDescription("Leave an organization (cannot be used by the owner)."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
-	), tools.LeaveOrganization(c))
+	), cc(tools.LeaveOrganization))
 
 	s.AddTool(mcp.NewTool(
 		"cancel_org_invite",
 		mcp.WithDescription("Cancel a pending organization invitation by email."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithString("email", mcp.Description("Email of the pending invite to cancel"), mcp.Required()),
-	), tools.CancelOrgInvite(c))
+	), cc(tools.CancelOrgInvite))
 
 	s.AddTool(mcp.NewTool(
 		"remove_org_member",
 		mcp.WithDescription("Remove a member from an organization."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithNumber("user_id", mcp.Description("User ID of the member to remove"), mcp.Required()),
-	), tools.RemoveOrgMember(c))
+	), cc(tools.RemoveOrgMember))
 
 	s.AddTool(mcp.NewTool(
 		"update_org_member",
@@ -1286,7 +1363,7 @@ func main() {
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithNumber("user_id", mcp.Description("User ID of the member"), mcp.Required()),
 		mcp.WithString("role", mcp.Description("New role: admin, user, or viewer"), mcp.Required()),
-	), tools.UpdateOrgMember(c))
+	), cc(tools.UpdateOrgMember))
 
 	// ── Misc ──────────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1296,32 +1373,32 @@ func main() {
 		mcp.WithString("public_id", mcp.Description("Content public_id (use when content_id is unknown)")),
 		mcp.WithString("query_json", mcp.Description(`JSON array of search terms, e.g. ["red shoes","running"]`)),
 		mcp.WithString("filter_json", mcp.Description(`JSON array of filter expressions, e.g. ["price: [10...100]"]`)),
-	), tools.SearchPlayground(c))
+	), cc(tools.SearchPlayground))
 
 	s.AddTool(mcp.NewTool(
 		"check_snippet_page",
 		mcp.WithDescription("Check if a page URL has the Poltio snippet active and receiving requests in the last 48 hours."),
 		mcp.WithString("url", mcp.Description("Fully qualified page URL to check"), mcp.Required()),
-	), tools.CheckSnippetPage(c))
+	), cc(tools.CheckSnippetPage))
 
 	s.AddTool(mcp.NewTool(
 		"create_short_link",
 		mcp.WithDescription("Create a polt.io shortened URL from any long URL."),
 		mcp.WithString("url", mcp.Description("Fully qualified URL to shorten"), mcp.Required()),
-	), tools.CreateShortLink(c))
+	), cc(tools.CreateShortLink))
 
 	// ── Subscription ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_subscription_tiers",
 		mcp.WithDescription("List available subscription tiers and their features."),
-	), tools.ListSubscriptionTiers(c))
+	), cc(tools.ListSubscriptionTiers))
 
 	s.AddTool(mcp.NewTool(
 		"create_subscription",
 		mcp.WithDescription("Create a new subscription for the current organization."),
 		mcp.WithNumber("tier_id", mcp.Description("Subscription tier ID (from list_subscription_tiers)"), mcp.Required()),
 		mcp.WithString("period", mcp.Description("Billing period: month or year"), mcp.Required()),
-	), tools.CreateSubscription(c))
+	), cc(tools.CreateSubscription))
 
 	if port != "" {
 		serverURL := os.Getenv("SERVER_URL")
@@ -1351,6 +1428,9 @@ func main() {
 			log.Fatalf("bridge mode: %v", err)
 		}
 
+		// Wire the per-session org-override setter so SwitchOrganization persists to the DB.
+		orgSetter = &dbOrgSetter{db: db}
+
 		// Sweep goroutine: hourly cleanup of expired clients, pending grants, and needs_reconnect grants.
 		go func() {
 			for range time.NewTicker(time.Hour).C {
@@ -1363,12 +1443,26 @@ func main() {
 			}
 		}()
 
+		// Auth middleware: short-circuit with a tool error when the request has no valid grant.
+		s.Use(func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+			return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				if oauth.NeedsAuth(ctx) {
+					return mcp.NewToolResultError("not authenticated — reconnect your Poltio connector"), nil
+				}
+				if oauth.NeedsReconnect(ctx) {
+					return mcp.NewToolResultError("your Poltio access has expired or was revoked — reconnect at " + serverURL + "/authorize"), nil
+				}
+				return next(ctx, req)
+			}
+		})
+
 		prmHandler, asmHandler := oauth.MetadataHandlers(serverURL)
 
 		mcpServer := server.NewStreamableHTTPServer(
 			s,
 			server.WithEndpointPath("/mcp"),
 			server.WithStreamableHTTPCORS(server.WithCORSAllowedOrigins("*")),
+			server.WithHTTPContextFunc(oauth.BridgeContextFunc(db, encKey, "")),
 		)
 
 		mux := http.NewServeMux()
@@ -1379,7 +1473,7 @@ func main() {
 		mux.HandleFunc("/consent", oauth.ConsentHandler(db, serverURL, encKey, 10*time.Minute, ""))
 		mux.HandleFunc("/token", oauth.TokenHandler(db))
 		mux.HandleFunc("/revoke", oauth.RevokeHandler(db))
-		// /mcp: require Authorization header; full token validation added in U7
+		// /mcp: require Authorization header (pre-check); BridgeContextFunc does full token validation.
 		mux.Handle("/mcp", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
 		mux.Handle("/mcp/", oauth.UnauthorizedMCPMiddleware(serverURL, mcpServer))
 
