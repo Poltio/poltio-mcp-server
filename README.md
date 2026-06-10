@@ -15,31 +15,82 @@ go build -o poltio-mcp-server .
 
 ## Configuration
 
-| Variable | Description |
-|---|---|
-| `POLTIO_API_TOKEN` | Bearer token — from Poltio account → Settings → Tokens |
-| `PORT` | When set, starts an HTTP server on that port instead of stdio |
+The server runs in two modes depending on which environment variables are set.
 
-The server automatically fetches your organizations at startup and activates the first one. Use the `list_organizations` and `switch_organization` tools to view and change the active organization.
+**Stdio mode** (personal use, Claude Desktop, Gemini CLI):
 
-## HTTP Mode (for web UIs and Smithery)
+| Variable | Required | Description |
+|---|---|---|
+| `POLTIO_API_TOKEN` | Yes | Bearer token — from Poltio account → Settings → Tokens |
 
-Set `PORT` to start the server as an HTTP/Streamable-HTTP server instead of a stdio process:
+**Bridge mode** (hosted OAuth connector for Claude.ai custom connectors, Smithery):
+
+| Variable | Required | Description |
+|---|---|---|
+| `PORT` | Yes | HTTP port to listen on (e.g. `8080`) |
+| `SERVER_URL` | Yes | Public HTTPS base URL of the deployment (e.g. `https://mcp.example.com`) |
+| `BRIDGE_ENCRYPTION_KEY` | Yes | 32-byte master key as 64 hex characters — generate with `openssl rand -hex 32` |
+| `DATABASE_PATH` | No | Path to the SQLite database file (default: `bridge.db`) |
+| `BRIDGE_DEV_MODE` | No | Set to `true` to allow `http://` SERVER_URL in local development |
+
+In stdio mode the server fetches your organizations at startup and activates the first one. Use `list_organizations` and `switch_organization` to view and change the active organization.
+
+## Deploying as a hosted OAuth connector
+
+Bridge mode turns the server into a multi-tenant OAuth 2.1 authorization server. Each user who connects via Claude.ai or Smithery authenticates with their own Poltio token through a consent screen — the server operator never handles individual user credentials.
+
+### Prerequisites
+
+- A server with a public HTTPS URL (Fly.io, Railway, Render, VPS)
+- OpenSSL or equivalent to generate a 32-byte encryption key
+
+### 1. Generate an encryption key
 
 ```bash
-POLTIO_API_TOKEN=your-token PORT=8080 ./poltio-mcp-server
+openssl rand -hex 32
+# example output: a3f2...64 hex characters
 ```
 
-The MCP endpoint is available at `http://localhost:8080/mcp`.
+Store the result as `BRIDGE_ENCRYPTION_KEY` in your deployment secrets. This key encrypts every user's Poltio token at rest. Do not rotate it without re-encrypting the database.
 
-All requests must include `Authorization: Bearer <POLTIO_API_TOKEN>` — the server rejects anything that doesn't match.
+### 2. Deploy
 
-### Publishing to Smithery
+```bash
+SERVER_URL=https://mcp.example.com \
+BRIDGE_ENCRYPTION_KEY=<64-hex-chars> \
+DATABASE_PATH=/data/bridge.db \
+PORT=8080 \
+./poltio-mcp-server
+```
 
-1. Deploy the server to any host with a public HTTPS URL (Fly.io, Railway, Render, VPS).
-2. Set `POLTIO_API_TOKEN` and `PORT` in the deployment environment.
-3. Go to [smithery.ai](https://smithery.ai) → Publish → enter your server URL (`https://your-host.com/mcp`).
-4. Users connecting through Smithery must configure `Authorization: Bearer <token>` in the Smithery connection settings.
+The following endpoints are served:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /.well-known/oauth-protected-resource` | RFC 9728 — points clients at the authorization server |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 — publishes OAuth server metadata |
+| `POST /register` | RFC 7591 Dynamic Client Registration |
+| `GET /authorize` | Authorization endpoint — shows consent screen |
+| `POST /consent` | Processes user token submission |
+| `POST /token` | Token endpoint — issues and rotates access tokens |
+| `POST /revoke` | Revokes a grant |
+| `POST /mcp` | Streamable HTTP MCP endpoint |
+
+### 3. Connect from Claude.ai
+
+In Claude.ai → Settings → Connectors → Add custom connector, enter:
+
+```
+https://mcp.example.com/mcp
+```
+
+Claude.ai discovers the OAuth endpoints automatically via the `/.well-known/` metadata documents, opens the consent screen, and prompts each user to paste their Poltio API token.
+
+### 4. Publish to Smithery
+
+1. Go to [smithery.ai](https://smithery.ai) → New Server → **URL-based** (not binary upload).
+2. Enter your server's public MCP URL: `https://mcp.example.com/mcp`.
+3. Smithery reads the OAuth metadata documents automatically — no manual configuration required.
 
 ## Claude Desktop Integration
 
