@@ -109,9 +109,9 @@ func tokenRefreshRequest(refreshToken string) *http.Request {
 }
 
 // parseTokenResponse parses the JSON token response.
-func parseTokenResponse(t *testing.T, body []byte) map[string]interface{} {
+func parseTokenResponse(t *testing.T, body []byte) map[string]any {
 	t.Helper()
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatalf("parseTokenResponse: %v", err)
 	}
@@ -381,8 +381,7 @@ func TestTokenRefreshConcurrentRotation(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := 0; i < goroutines; i++ {
-		i := i
+	for i := range goroutines {
 		go func() {
 			defer wg.Done()
 			w := httptest.NewRecorder()

@@ -95,7 +95,7 @@ func TestRegisterRateLimit(t *testing.T) {
 	})
 	body := `{"redirect_uris":["https://claude.ai/api/mcp/auth_callback"]}`
 	var lastCode int
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")

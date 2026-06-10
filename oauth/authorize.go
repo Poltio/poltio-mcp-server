@@ -3,6 +3,7 @@ package oauth
 import (
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,13 +49,7 @@ func AuthorizeHandler(db *store.Store, sessionTTL time.Duration) http.HandlerFun
 		}
 
 		// Validate redirect_uri is an exact-byte-match to a registered URI.
-		validRedirect := false
-		for _, u := range oauthClient.RedirectURIs {
-			if u == redirectURI {
-				validRedirect = true
-				break
-			}
-		}
+		validRedirect := slices.Contains(oauthClient.RedirectURIs, redirectURI)
 		if !validRedirect {
 			http.Error(w, "redirect_uri does not match any registered URI", http.StatusBadRequest)
 			return

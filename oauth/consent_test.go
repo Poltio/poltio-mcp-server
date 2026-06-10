@@ -233,9 +233,9 @@ func TestConsentZeroOrganizations(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return profile with zero orgs.
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"id":            7,
-			"organizations": []interface{}{},
+			"organizations": []any{},
 		}
 		json.NewEncoder(w).Encode(resp) //nolint:errcheck
 	}))

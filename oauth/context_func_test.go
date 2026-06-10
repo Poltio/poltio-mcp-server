@@ -68,7 +68,7 @@ func TestBridgeContextFunc_ActiveGrant(t *testing.T) {
 	db := openTestStore(t)
 	key := testKey(t)
 
-	rawAccess := insertBridgeGrant(t, db, key,"grant-1", "poltio-secret-token", "42")
+	rawAccess := insertBridgeGrant(t, db, key, "grant-1", "poltio-secret-token", "42")
 
 	fn := BridgeContextFunc(db, key, "")
 	r := httptest.NewRequest("GET", "/mcp", nil)
@@ -136,7 +136,7 @@ func TestBridgeContextFunc_RevokedGrant(t *testing.T) {
 	db := openTestStore(t)
 	key := testKey(t)
 
-	rawAccess := insertBridgeGrant(t, db, key,"grant-revoked", "poltio-token", "1")
+	rawAccess := insertBridgeGrant(t, db, key, "grant-revoked", "poltio-token", "1")
 	// Revoke it
 	h := sha256.Sum256([]byte(rawAccess))
 	accessHash := hex.EncodeToString(h[:])
@@ -165,7 +165,7 @@ func TestBridgeContextFunc_NeedsReconnectGrant(t *testing.T) {
 	db := openTestStore(t)
 	key := testKey(t)
 
-	rawAccess := insertBridgeGrant(t, db, key,"grant-nr", "poltio-token", "1")
+	rawAccess := insertBridgeGrant(t, db, key, "grant-nr", "poltio-token", "1")
 	h := sha256.Sum256([]byte(rawAccess))
 	accessHash := hex.EncodeToString(h[:])
 	g, _ := db.GetGrantByAccessToken(accessHash)
@@ -189,7 +189,7 @@ func TestBridgeContextFunc_OrgOverride(t *testing.T) {
 	db := openTestStore(t)
 	key := testKey(t)
 
-	rawAccess := insertBridgeGrant(t, db, key,"grant-org", "poltio-token", "original-org")
+	rawAccess := insertBridgeGrant(t, db, key, "grant-org", "poltio-token", "original-org")
 	// Set org_override
 	h := sha256.Sum256([]byte(rawAccess))
 	accessHash := hex.EncodeToString(h[:])
@@ -228,7 +228,7 @@ func TestBridgeContextFunc_ConcurrentNoCrossContamination(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan string, iterations*2)
 
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()

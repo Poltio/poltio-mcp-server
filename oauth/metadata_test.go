@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -86,10 +87,5 @@ func TestValidateServerURL(t *testing.T) {
 }
 
 func contains(ss []string, target string) bool {
-	for _, s := range ss {
-		if s == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ss, target)
 }

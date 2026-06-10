@@ -143,7 +143,7 @@ func ConsentHandler(db *store.Store, serverURL string, key []byte, sessionTTL ti
 		{
 			const maxAttempts = 3
 			const retryDelay = 500 * time.Millisecond
-			for attempt := 0; attempt < maxAttempts; attempt++ {
+			for attempt := range maxAttempts {
 				profile, err = fetchPoltioProfile(poltioToken, poltioBaseURL)
 				if err == nil {
 					break
