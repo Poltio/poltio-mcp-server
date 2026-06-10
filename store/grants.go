@@ -201,21 +201,30 @@ func (s *Store) ActivateGrant(grantID, accessTokenHash, refreshTokenHash string)
 	return nil
 }
 
-// RotateTokens replaces access and refresh token hashes atomically.
-func (s *Store) RotateTokens(grantID, newAccessHash, newRefreshHash string) error {
-	_, err := s.writeDB.Exec(
+// RotateTokens replaces access and refresh token hashes atomically, but only
+// if the grant is still active AND the current refresh_token_hash matches oldRefreshHash.
+// This prevents double-spend: concurrent callers with the same token see exactly one
+// rows-affected=1; the loser sees 0 and should respond with invalid_grant.
+// Returns (false, nil) if 0 rows were updated (race lost or stale token).
+func (s *Store) RotateTokens(grantID, oldRefreshHash, newAccessHash, newRefreshHash string) (bool, error) {
+	res, err := s.writeDB.Exec(
 		`UPDATE oauth_grants
 		    SET access_token_hash = ?,
 		        refresh_token_hash = ?
-		  WHERE grant_id = ?`,
+		  WHERE grant_id = ? AND refresh_token_hash = ? AND grant_state = 'active'`,
 		newAccessHash,
 		newRefreshHash,
 		grantID,
+		oldRefreshHash,
 	)
 	if err != nil {
-		return fmt.Errorf("store: rotate tokens: %w", err)
+		return false, fmt.Errorf("store: rotate tokens: %w", err)
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("store: rotate tokens: rows affected: %w", err)
+	}
+	return n == 1, nil
 }
 
 // MarkNeedsReconnect transitions active → needs_reconnect and NULLs poltio_token_enc.
