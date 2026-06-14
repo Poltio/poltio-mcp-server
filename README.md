@@ -113,7 +113,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_sankey_users` | Get users who took a specific path in the Sankey diagram |
 | `get_searchable_fields` | Get all searchable and filterable fields for a searchable content item |
 | `get_session_urls` | Get session URLs grouped by URL with session counts |
-| `upload_image` | Upload a base64-encoded image; returns a file path for use in content, questions, answers, or results |
+| `upload_image` | Upload a base64-encoded image (<= 5 MB; png, jpg, jpeg, gif, or webp); returns a file path for use in content, questions, answers, or results |
 
 **Questions**
 
