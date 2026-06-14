@@ -5,29 +5,37 @@ on:
       - closed
     branches:
       - main
+concurrency:
+  group: create-tag-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
 jobs:
   tag:
     runs-on: ubuntu-latest
     name: Create a new version tag
     if: github.event.pull_request.merged
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: false
       - name: Determine version bump
         id: bump
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
-          if echo "$labels" | grep -q '"major"'; then
-            echo "type=major" >> $GITHUB_OUTPUT
-          elif echo "$labels" | grep -q '"minor"'; then
-            echo "type=minor" >> $GITHUB_OUTPUT
+          if echo "$LABELS" | grep -q '"major"'; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$LABELS" | grep -q '"minor"'; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
           else
-            echo "type=patch" >> $GITHUB_OUTPUT
+            echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
       - name: Calculate new version
         id: version
+        env:
+          BUMP_TYPE: ${{ steps.bump.outputs.type }}
         run: |
           VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v0.0.0")
           VERSION="${VERSION/v/}"
@@ -39,16 +47,20 @@ jobs:
           [[ $MINOR =~ $re ]] || MINOR=0
           [[ $PATCH =~ $re ]] || PATCH=0
 
-          case "${{ steps.bump.outputs.type }}" in
+          case "$BUMP_TYPE" in
             major) ((MAJOR+=1)); MINOR=0; PATCH=0 ;;
             minor) ((MINOR+=1)); PATCH=0 ;;
             patch) ((PATCH+=1)) ;;
           esac
 
-          echo "version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+          echo "version=v${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
       - name: Create and push tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          # PAT (not GITHUB_TOKEN) so the pushed tag triggers the release workflow.
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.version }}
-          git push origin ${{ steps.version.outputs.version }}
+          git tag "$VERSION"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$VERSION"
