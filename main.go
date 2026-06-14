@@ -64,8 +64,17 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"create_content",
-		mcp.WithDescription("Create a new Poltio content item. The item starts as a draft — call publish_content to make it live."),
-		mcp.WithString("type", mcp.Description("Content type: poll, set, test, quiz, this-that"), mcp.Required()),
+		mcp.WithDescription(`Create a new Poltio content item. It starts as a draft — call publish_content to make it live.
+
+A Poltio content item is an interactive widget made of a cover screen, one or more questions (each with answers), and optional result screens. Pick the type that matches the experience:
+- poll: a standalone voting poll that shows live vote percentages and counts.
+- set: a multi-question flow. This single API type backs three dashboard presets: "Survey" (a plain set, no result logic), "Calculator"/Product Finder (set with is_calculator=1 — the result is chosen by a math formula over per-answer calculator values), and "Searchable" Product Finder (set with is_searchable=1 — results are matched by search query/filters set on the answers).
+- quiz: a right/wrong quiz. Mark one correct answer per question and set attributes_json gives_feedback=1; optionally show a timer (show_timer) and the score (display_results).
+- test: a personality/outcome test. Answers carry points (set_answer_result_point) that add up to a matching result screen chosen by its min_c–max_c score range.
+- this-that: a single "This or That" question. Only one question is allowed and the answer count should be a power of 2 (2, 4, 8, ...).
+
+After creating, use add_question / add_answer / add_result to build it out. Workflow: create_content → add_question(s) → add_answer(s) → (add_result/set_answer_result_point for quizzes/tests) → publish_content.`),
+		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. Note: 'set' backs three dashboard presets — Survey (plain set), Calculator/Product Finder (set + is_calculator), and Searchable Product Finder (set + is_searchable)."), mcp.Required()),
 		mcp.WithString("title", mcp.Description("End-user facing title"), mcp.Required()),
 		mcp.WithString("desc", mcp.Description("Cover screen description (optional)")),
 		mcp.WithString("name", mcp.Description("Internal non-public name (optional)")),
@@ -79,14 +88,14 @@ func main() {
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 (default) or 1")),
 		mcp.WithNumber("hide_counter", mcp.Description("Hide vote counter: 0 (default) or 1")),
 		mcp.WithNumber("display_repeat", mcp.Description("Show play again button: 0 (default) or 1")),
-		mcp.WithNumber("is_searchable", mcp.Description("Mark content as searchable to use search/filtering for results: 0 (default) or 1")),
-		mcp.WithNumber("is_calculator", mcp.Description("Mark content as calculator to use formulas: 0 (default) or 1")),
-		mcp.WithNumber("search_results_per_page", mcp.Description("Result count per page for searchable contents (default: 5)")),
-		mcp.WithNumber("result_loading", mcp.Description("Display a loading screen between last question and result: 0 (default) or 1")),
+		mcp.WithNumber("is_searchable", mcp.Description("Turns a 'set' into a Searchable Product Finder: results are matched from the answers' search_query/search_filter instead of fixed score ranges. 0 (default) or 1.")),
+		mcp.WithNumber("is_calculator", mcp.Description("Turns a 'set' into a Calculator/Product Finder: the result is computed from attributes_json cal_formula over per-answer calculator values. 0 (default) or 1.")),
+		mcp.WithNumber("search_results_per_page", mcp.Description("Max number of results shown to the user for searchable content (default: 5; recommended 3–5). 0 means no results are shown.")),
+		mcp.WithNumber("result_loading", mcp.Description("Display a loading screen between the last question and the result: 0 (default) or 1")),
 		mcp.WithString("loading_next_question_label", mcp.Description("Custom loading label between questions")),
 		mcp.WithString("loading_result_label", mcp.Description("Custom loading label between last question and result")),
-		mcp.WithNumber("play_once", mcp.Description("Content playable only once per user: 0 (default) or 1")),
-		mcp.WithString("play_once_strategy", mcp.Description("When to consider user as played: start or result (default: result)")),
+		mcp.WithNumber("play_once", mcp.Description("Restrict the content to one session per user (tracked by uuid / Poltio session id): 0 (default) or 1")),
+		mcp.WithString("play_once_strategy", mcp.Description("When a user counts as having played: 'start' (counted as soon as they begin) or 'result' (counted only once they reach the result screen). Default: result.")),
 		mcp.WithString("play_once_msg", mcp.Description("Custom message for play-once error screen")),
 		mcp.WithString("play_once_img", mcp.Description("Custom image for play-once error screen")),
 		mcp.WithString("play_once_link", mcp.Description("Custom button link for play-once error screen")),
@@ -94,7 +103,18 @@ func main() {
 		mcp.WithNumber("end_date_day", mcp.Description("Auto-finish content after this many days")),
 		mcp.WithNumber("end_date_hour", mcp.Description("Auto-finish content after this many hours")),
 		mcp.WithNumber("end_date_minute", mcp.Description("Auto-finish content after this many minutes")),
-		mcp.WithString("attributes_json", mcp.Description(`Advanced settings as a JSON object. Fields: cal_formula, gives_feedback, show_timer, display_results, pool_question_count, time_limit, recom_title, noindex, canonical, redirect, keywords`)),
+		mcp.WithString("attributes_json", mcp.Description(`Advanced/behavioral settings as a JSON object. Fields:
+- cal_formula (string): formula used to compute the result for calculator contents (is_calculator=1), evaluated over the per-answer/per-question calculator values.
+- gives_feedback (0/1): mark answers as correct/wrong and show right-or-wrong feedback after each vote; required for quiz scoring.
+- show_timer (0/1): show a running session timer on the widget, for timed competitions/quizzes.
+- display_results (0/1, default 1): show the user's correct-answer count on the result screen (requires gives_feedback=1).
+- pool_question_count (int): show only this many questions, chosen at random per user, out of all questions added.
+- time_limit (int, minutes): countdown timer; the session jumps to the result screen when it reaches 0.
+- recom_title (string): heading shown above the results when more than one result is returned, e.g. "Our Recommendations".
+- noindex (0/1): ask search engines not to index the hosted widget page directly (does not affect the page you embed it in).
+- canonical (string URL): add a canonical rel tag to the widget page.
+- redirect (string URL): redirect the widget page to this URL.
+- keywords (string): meta keywords for the widget page.`)),
 	), tools.CreateContent(c))
 
 	s.AddTool(mcp.NewTool(
@@ -116,12 +136,12 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"update_content",
-		mcp.WithDescription("Update an existing Poltio content item's metadata and images."),
+		mcp.WithDescription("Update an existing Poltio content item's metadata, cover images, and behavioral options. Only the fields you pass are changed. See create_content for the meaning of each content type and option."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("New end-user facing title")),
 		mcp.WithString("desc", mcp.Description("New cover screen description")),
 		mcp.WithString("name", mcp.Description("New internal non-public name")),
-		mcp.WithString("type", mcp.Description("Content type: poll, set, test, quiz, this-that")),
+		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. 'set' backs the Survey, Calculator/Product Finder (is_calculator) and Searchable Product Finder (is_searchable) presets.")),
 		mcp.WithString("background", mcp.Description("Cover image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the cover image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout cover image path")),
@@ -132,14 +152,14 @@ func main() {
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 or 1")),
 		mcp.WithNumber("hide_counter", mcp.Description("Hide vote counter: 0 or 1")),
 		mcp.WithNumber("display_repeat", mcp.Description("Show play again button: 0 or 1")),
-		mcp.WithNumber("is_searchable", mcp.Description("Mark content as searchable: 0 or 1")),
-		mcp.WithNumber("is_calculator", mcp.Description("Mark content as calculator: 0 or 1")),
-		mcp.WithNumber("search_results_per_page", mcp.Description("Result count per page for searchable contents")),
+		mcp.WithNumber("is_searchable", mcp.Description("Searchable Product Finder: match results from the answers' search_query/search_filter. 0 or 1.")),
+		mcp.WithNumber("is_calculator", mcp.Description("Calculator/Product Finder: compute the result from attributes_json cal_formula over per-answer calculator values. 0 or 1.")),
+		mcp.WithNumber("search_results_per_page", mcp.Description("Max results shown for searchable content (recommended 3–5; 0 hides results)")),
 		mcp.WithNumber("result_loading", mcp.Description("Display loading screen before result: 0 or 1")),
 		mcp.WithString("loading_next_question_label", mcp.Description("Custom loading label between questions")),
 		mcp.WithString("loading_result_label", mcp.Description("Custom loading label before result")),
-		mcp.WithNumber("play_once", mcp.Description("Content playable once per user: 0 or 1")),
-		mcp.WithString("play_once_strategy", mcp.Description("When to consider user as played: start or result")),
+		mcp.WithNumber("play_once", mcp.Description("Restrict to one session per user (tracked by uuid / Poltio session id): 0 or 1")),
+		mcp.WithString("play_once_strategy", mcp.Description("When a user counts as played: 'start' (on begin) or 'result' (on reaching the result screen)")),
 		mcp.WithString("play_once_msg", mcp.Description("Custom play-once message")),
 		mcp.WithString("play_once_img", mcp.Description("Custom play-once image path")),
 		mcp.WithString("play_once_link", mcp.Description("Custom play-once button link")),
@@ -147,7 +167,18 @@ func main() {
 		mcp.WithNumber("end_date_day", mcp.Description("Auto-finish after this many days")),
 		mcp.WithNumber("end_date_hour", mcp.Description("Auto-finish after this many hours")),
 		mcp.WithNumber("end_date_minute", mcp.Description("Auto-finish after this many minutes")),
-		mcp.WithString("attributes_json", mcp.Description(`Advanced settings as a JSON object. Fields: cal_formula, gives_feedback, show_timer, display_results, pool_question_count, time_limit, recom_title, noindex, canonical, redirect, keywords`)),
+		mcp.WithString("attributes_json", mcp.Description(`Advanced/behavioral settings as a JSON object. Fields:
+- cal_formula (string): formula used to compute the result for calculator contents (is_calculator=1), evaluated over the per-answer/per-question calculator values.
+- gives_feedback (0/1): mark answers as correct/wrong and show right-or-wrong feedback after each vote; required for quiz scoring.
+- show_timer (0/1): show a running session timer on the widget, for timed competitions/quizzes.
+- display_results (0/1, default 1): show the user's correct-answer count on the result screen (requires gives_feedback=1).
+- pool_question_count (int): show only this many questions, chosen at random per user, out of all questions added.
+- time_limit (int, minutes): countdown timer; the session jumps to the result screen when it reaches 0.
+- recom_title (string): heading shown above the results when more than one result is returned, e.g. "Our Recommendations".
+- noindex (0/1): ask search engines not to index the hosted widget page directly (does not affect the page you embed it in).
+- canonical (string URL): add a canonical rel tag to the widget page.
+- redirect (string URL): redirect the widget page to this URL.
+- keywords (string): meta keywords for the widget page.`)),
 	), tools.UpdateContent(c))
 
 	s.AddTool(mcp.NewTool(
@@ -265,36 +296,44 @@ func main() {
 	// ── Questions ─────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"add_question",
-		mcp.WithDescription("Add a new question to a draft content item."),
+		mcp.WithDescription(`Add a new question to a content item. answer_type determines how the user responds:
+- media / text: a normal single- or multiple-choice question. Use 'media' when the answers have images, 'text' for text-only answers (same family). Combine with allow_multiple_answers for multi-select.
+- score: a fixed numeric scale (e.g. 1–5) where each option carries a value; used in scored quizzes/tests and calculators.
+- star_rating: a star-based rating input.
+- yesno: a simple Yes/No question.
+- free_text: a free-form text box the user types into (no preset answers; read submissions later with get_question_inputs).
+- free_number: a free-form numeric input.
+- autocomplete: a typed input that suggests from your predefined answers as the user types; best when you have roughly 15–1000 answers (tune how many suggestions show with recommended_popular_answer).
+After adding the question, attach answers with add_answer or add_answers_bulk (free_text/free_number questions take no answers).`),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("Question text shown to the user")),
-		mcp.WithString("answer_type", mcp.Description("Answer type: media, text, score, star_rating, yesno, free_text, free_number, autocomplete"), mcp.Required()),
+		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), yesno (Yes/No), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers)"), mcp.Required()),
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
-		mcp.WithNumber("allow_multiple_answers", mcp.Description("Allow selecting multiple answers: 0 (default) or 1")),
-		mcp.WithNumber("is_skippable", mcp.Description("Allow skipping this question: 0 (default) or 1")),
-		mcp.WithNumber("rotate_answers", mcp.Description("Randomise answer order per user: 0 (default) or 1")),
+		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 (default) or 1. Pair with max_multi_punch_answer to cap selections.")),
+		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 (default) or 1")),
+		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 (default) or 1")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
-		mcp.WithNumber("max_multi_punch_answer", mcp.Description("How many answers you like to be voted in one session")),
-		mcp.WithNumber("recommended_popular_answer", mcp.Description("How many answers do you want to display on auto complete type answers")),
-		mcp.WithString("luv", mcp.Description("lead url variable for the question")),
-		mcp.WithNumber("is_searchable", mcp.Description("If you set this as 1 you can use votes to this question to query or filter the search results")),
-		mcp.WithString("cal_val_default", mcp.Description("The default value for calculator contents for this question if the answer doesn't have any specific value")),
-		mcp.WithString("autocomplete_help", mcp.Description("Autocomplete help text if you want to customize it")),
-		mcp.WithString("autocomplete_placeholder", mcp.Description("Autocomplete field placeholder text if you want to customize it")),
-		mcp.WithNumber("position", mcp.Description("Numeric value for the Question position in the content")),
-		mcp.WithString("conditions", mcp.Description("Comma seperated list of Answer IDs to use as display conditions")),
-		mcp.WithNumber("condition_reverse", mcp.Description("Indicates if the conditions should be positive or negative")),
+		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
+		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL for this question's selection, used to pass data to downstream lead/redirect URLs.")),
+		mcp.WithNumber("is_searchable", mcp.Description("Mark this question's votes as usable in search queries/filters for Searchable Product Finders: 0 (default) or 1.")),
+		mcp.WithString("cal_val_default", mcp.Description("Calculator contents only: default calculator value applied to every answer in this question that has no value of its own.")),
+		mcp.WithString("autocomplete_help", mcp.Description("Custom helper text shown under an autocomplete input.")),
+		mcp.WithString("autocomplete_placeholder", mcp.Description("Custom placeholder text for the autocomplete input field.")),
+		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this question within the content. Lower shows first.")),
+		mcp.WithString("conditions", mcp.Description("Comma-separated Answer IDs (from earlier questions); this question is only shown to users who selected one of them. See condition_reverse to invert.")),
+		mcp.WithNumber("condition_reverse", mcp.Description("Invert the display conditions: 0 = show only to users who selected the condition answer(s); 1 = show only to users who did NOT select them.")),
 	), tools.AddQuestion(c))
 
 	s.AddTool(mcp.NewTool(
 		"update_question",
-		mcp.WithDescription("Update an existing question."),
+		mcp.WithDescription("Update an existing question. See add_question for the meaning of each answer_type. Only the fields you pass are changed."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("Question text shown to the user")),
-		mcp.WithString("answer_type", mcp.Description("Answer type: media, text, score, star_rating, yesno, free_text, free_number, autocomplete"), mcp.Required()),
+		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), yesno (Yes/No), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers)"), mcp.Required()),
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
@@ -302,16 +341,16 @@ func main() {
 		mcp.WithNumber("is_skippable", mcp.Description("Allow skipping this question: 0 or 1")),
 		mcp.WithNumber("rotate_answers", mcp.Description("Randomise answer order per user: 0 or 1")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
-		mcp.WithNumber("max_multi_punch_answer", mcp.Description("How many answers you like to be voted in one session")),
-		mcp.WithNumber("recommended_popular_answer", mcp.Description("How many answers do you want to display on auto complete type answers")),
-		mcp.WithString("luv", mcp.Description("lead url variable for the question")),
-		mcp.WithNumber("is_searchable", mcp.Description("If you set this as 1 you can use votes to this question to query or filter the search results")),
-		mcp.WithString("cal_val_default", mcp.Description("The default value for calculator contents for this question if the answer doesn't have any specific value")),
-		mcp.WithString("autocomplete_help", mcp.Description("Autocomplete help text if you want to customize it")),
-		mcp.WithString("autocomplete_placeholder", mcp.Description("Autocomplete field placeholder text if you want to customize it")),
-		mcp.WithNumber("position", mcp.Description("Numeric value for the Question position in the content")),
-		mcp.WithString("conditions", mcp.Description("Comma seperated list of Answer IDs to use as display conditions")),
-		mcp.WithNumber("condition_reverse", mcp.Description("Indicates if the conditions should be positive or negative")),
+		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
+		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL for this question's selection, used to pass data to downstream lead/redirect URLs.")),
+		mcp.WithNumber("is_searchable", mcp.Description("Mark this question's votes as usable in search queries/filters for Searchable Product Finders: 0 (default) or 1.")),
+		mcp.WithString("cal_val_default", mcp.Description("Calculator contents only: default calculator value applied to every answer in this question that has no value of its own.")),
+		mcp.WithString("autocomplete_help", mcp.Description("Custom helper text shown under an autocomplete input.")),
+		mcp.WithString("autocomplete_placeholder", mcp.Description("Custom placeholder text for the autocomplete input field.")),
+		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this question within the content. Lower shows first.")),
+		mcp.WithString("conditions", mcp.Description("Comma-separated Answer IDs (from earlier questions); this question is only shown to users who selected one of them. See condition_reverse to invert.")),
+		mcp.WithNumber("condition_reverse", mcp.Description("Invert the display conditions: 0 = show only to users who selected the condition answer(s); 1 = show only to users who did NOT select them.")),
 	), tools.UpdateQuestion(c))
 
 	s.AddTool(mcp.NewTool(
@@ -330,25 +369,25 @@ func main() {
 		mcp.WithString("title", mcp.Description("Answer text (optional when background image is provided)")),
 		mcp.WithString("background", mcp.Description("Answer image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the answer image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable for the answer, e.g. '&color=blue'")),
-		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong feedback for this question: 0 (default) or 1")),
-		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer: 0 (default) or 1")),
-		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In multi-answer questions, selecting this deselects others: 0 (default) or 1")),
-		mcp.WithString("search_query", mcp.Description("Search index query to run when this answer is selected")),
-		mcp.WithString("search_filter", mcp.Description("Search index filter to apply when this answer is selected, e.g. 'color: [blue]'")),
-		mcp.WithNumber("position", mcp.Description("Numeric position for this answer in the question")),
-		mcp.WithNumber("max_vote", mcp.Description("If set, disables this answer once it reaches this vote count")),
-		mcp.WithString("addon", mcp.Description("Additional info shared with GTM and PixelCodes after user selects this answer")),
-		mcp.WithString("disabled_msg", mcp.Description("Custom message shown when this answer is disabled")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL after a user picks this answer, e.g. '&color=blue'. Carries the selection into downstream lead/redirect URLs.")),
+		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content attributes_json gives_feedback): 0 (default) or 1")),
+		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer for a quiz question: 0 (default) or 1")),
+		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this answer deselects all others (e.g. a 'None of the above' option): 0 (default) or 1")),
+		mcp.WithString("search_query", mcp.Description("Searchable Product Finder only: search-index query run to fetch matching results when this answer is selected.")),
+		mcp.WithString("search_filter", mcp.Description("Searchable Product Finder only: search-index filter applied when this answer is selected, e.g. 'color: [blue]'.")),
+		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question. Lower shows first.")),
+		mcp.WithNumber("max_vote", mcp.Description("Cap this answer at this many votes; once reached it is disabled and disabled_msg is shown. 0 = unlimited.")),
+		mcp.WithString("addon", mcp.Description("Extra metadata attached to this answer; forwarded to GTM events, Pixel events, webhooks and leads when the answer is selected.")),
+		mcp.WithString("disabled_msg", mcp.Description("Message shown in place of this answer once it is disabled (e.g. after hitting max_vote).")),
 	), tools.AddAnswer(c))
 
 	s.AddTool(mcp.NewTool(
 		"add_answers_bulk",
-		mcp.WithDescription("Add multiple answers to a question in one call. Provide one answer per line in the answers field."),
+		mcp.WithDescription("Add several text answers to a question at once — the fast way to populate a single/multiple-choice question. Each line becomes its own answer. For images, points, leads or per-answer settings, use add_answer instead."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-		mcp.WithString("answers", mcp.Description("Answer texts, one per line"), mcp.Required()),
-		mcp.WithNumber("remove_existing", mcp.Description("Remove existing answers before adding: 0 (default) or 1")),
+		mcp.WithString("answers", mcp.Description("Answer texts, one per line. Each non-empty line becomes a separate answer."), mcp.Required()),
+		mcp.WithNumber("remove_existing", mcp.Description("Delete the question's existing answers before adding these (replace instead of append): 0 (default) or 1")),
 	), tools.AddAnswersBulk(c))
 
 	s.AddTool(mcp.NewTool(
@@ -360,16 +399,16 @@ func main() {
 		mcp.WithString("title", mcp.Description("New answer text")),
 		mcp.WithString("background", mcp.Description("Answer image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the answer image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable for the answer")),
-		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong feedback: 0 or 1")),
-		mcp.WithNumber("is_right_answer", mcp.Description("Mark as correct answer: 0 or 1")),
-		mcp.WithNumber("is_mutually_exclusive", mcp.Description("Mutually exclusive in multi-answer: 0 or 1")),
-		mcp.WithString("search_query", mcp.Description("Search index query to run when this answer is selected")),
-		mcp.WithString("search_filter", mcp.Description("Search index filter to apply when this answer is selected")),
-		mcp.WithNumber("position", mcp.Description("Numeric position for this answer in the question")),
-		mcp.WithNumber("max_vote", mcp.Description("If set, disables this answer once it reaches this vote count")),
-		mcp.WithString("addon", mcp.Description("Additional info shared with GTM and PixelCodes after user selects this answer")),
-		mcp.WithString("disabled_msg", mcp.Description("Custom message shown when this answer is disabled")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL after a user picks this answer, e.g. '&color=blue'.")),
+		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content gives_feedback): 0 or 1")),
+		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer for a quiz question: 0 or 1")),
+		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this deselects all other answers: 0 or 1")),
+		mcp.WithString("search_query", mcp.Description("Searchable Product Finder only: search-index query run to fetch matching results when this answer is selected.")),
+		mcp.WithString("search_filter", mcp.Description("Searchable Product Finder only: search-index filter applied when this answer is selected, e.g. 'color: [blue]'.")),
+		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question.")),
+		mcp.WithNumber("max_vote", mcp.Description("Cap this answer at this many votes; once reached it is disabled and disabled_msg is shown. 0 = unlimited.")),
+		mcp.WithString("addon", mcp.Description("Extra metadata attached to this answer; forwarded to GTM events, Pixel events, webhooks and leads when the answer is selected.")),
+		mcp.WithString("disabled_msg", mcp.Description("Message shown in place of this answer once it is disabled (e.g. after hitting max_vote).")),
 	), tools.UpdateAnswer(c))
 
 	s.AddTool(mcp.NewTool(
@@ -406,39 +445,43 @@ func main() {
 	// ── Results ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"add_result",
-		mcp.WithDescription("Add a result screen to a quiz or test content item."),
+		mcp.WithDescription(`Add a result (outcome) screen to a content item. How a result gets selected for a user depends on the content type:
+- test / scored quiz: by score range — the user's total points (from set_answer_result_point) fall within this result's min_c–max_c range.
+- Calculator/Product Finder (is_calculator): by the value the cal_formula computes.
+- Searchable Product Finder (is_searchable): by matching the answers' search_query/search_filter against this result's search / search2 terms.
+Add a default result (is_default=1) as a fallback for users no other result matches.`),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-		mcp.WithString("title", mcp.Description("Result title"), mcp.Required()),
-		mcp.WithString("desc", mcp.Description("Result description")),
+		mcp.WithString("title", mcp.Description("Result title shown to the user"), mcp.Required()),
+		mcp.WithString("desc", mcp.Description("Result description / body text")),
 		mcp.WithString("background", mcp.Description("Result image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the result image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable for the result, e.g. '&result=thanks'")),
-		mcp.WithString("url", mcp.Description("Optional redirect URL shown on the result screen")),
-		mcp.WithString("url_text", mcp.Description("Button label for the redirect URL")),
-		mcp.WithString("search", mcp.Description("Main search terms for searchable content")),
-		mcp.WithString("search2", mcp.Description("Secondary search terms for searchable content")),
-		mcp.WithNumber("min_c", mcp.Description("Minimum score to reach this result (score-based content)")),
-		mcp.WithNumber("max_c", mcp.Description("Maximum score for this result (score-based content)")),
-		mcp.WithNumber("is_default", mcp.Description("Make this a catch-all default result: 0 (default) or 1")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result/redirect URL for this result, e.g. '&result=thanks'.")),
+		mcp.WithString("url", mcp.Description("Optional call-to-action URL the result's button links to.")),
+		mcp.WithString("url_text", mcp.Description("Label for the call-to-action button (used with url).")),
+		mcp.WithString("search", mcp.Description("Searchable Product Finder: primary search terms used to match this result to answer-driven queries.")),
+		mcp.WithString("search2", mcp.Description("Searchable Product Finder: secondary search terms for matching this result.")),
+		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content). The result shows when the user's points are between min_c and max_c.")),
+		mcp.WithNumber("max_c", mcp.Description("Highest total score that maps to this result (test/scored content).")),
+		mcp.WithNumber("is_default", mcp.Description("Make this the catch-all result, shown when no score range or search match applies: 0 (default) or 1.")),
 	), tools.AddResult(c))
 
 	s.AddTool(mcp.NewTool(
 		"update_result",
-		mcp.WithDescription("Update an existing result screen."),
+		mcp.WithDescription("Update an existing result screen. See add_result for how results are matched to users. Only the fields you pass are changed."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("result_id", mcp.Description("Result ID"), mcp.Required()),
 		mcp.WithString("title", mcp.Description("New result title")),
-		mcp.WithString("desc", mcp.Description("New result description")),
+		mcp.WithString("desc", mcp.Description("New result description / body text")),
 		mcp.WithString("background", mcp.Description("Result image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the result image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable for the result")),
-		mcp.WithString("url", mcp.Description("Redirect URL")),
-		mcp.WithString("url_text", mcp.Description("Button label for the redirect URL")),
-		mcp.WithString("search", mcp.Description("Main search terms for searchable content")),
-		mcp.WithString("search2", mcp.Description("Secondary search terms for searchable content")),
-		mcp.WithNumber("min_c", mcp.Description("Minimum score for this result")),
-		mcp.WithNumber("max_c", mcp.Description("Maximum score for this result")),
-		mcp.WithNumber("is_default", mcp.Description("Make this a catch-all default result: 0 or 1")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result/redirect URL for this result.")),
+		mcp.WithString("url", mcp.Description("Call-to-action URL the result's button links to.")),
+		mcp.WithString("url_text", mcp.Description("Label for the call-to-action button (used with url).")),
+		mcp.WithString("search", mcp.Description("Searchable Product Finder: primary search terms used to match this result.")),
+		mcp.WithString("search2", mcp.Description("Searchable Product Finder: secondary search terms for matching this result.")),
+		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content).")),
+		mcp.WithNumber("max_c", mcp.Description("Highest total score that maps to this result (test/scored content).")),
+		mcp.WithNumber("is_default", mcp.Description("Make this the catch-all result, shown when no score range or search match applies: 0 or 1.")),
 	), tools.UpdateResult(c))
 
 	s.AddTool(mcp.NewTool(
@@ -450,12 +493,12 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"set_answer_result_point",
-		mcp.WithDescription("Set the point value that links an answer to a result (used in score-based quizzes and calculator tests)."),
+		mcp.WithDescription("Assign how many points an answer contributes toward a specific result. In tests/scored quizzes, points accumulate across the answers a user picks, and the result whose min_c–max_c range contains the total is shown. Call once per (answer, result) pair you want to weight."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-		mcp.WithNumber("answer_id", mcp.Description("Answer ID"), mcp.Required()),
-		mcp.WithNumber("content_result_id", mcp.Description("Result ID"), mcp.Required()),
-		mcp.WithNumber("point", mcp.Description("Point value (≥ 0)"), mcp.Required()),
+		mcp.WithNumber("answer_id", mcp.Description("Answer ID this point value is for"), mcp.Required()),
+		mcp.WithNumber("content_result_id", mcp.Description("Result ID the points count toward"), mcp.Required()),
+		mcp.WithNumber("point", mcp.Description("Points this answer adds to that result's score (≥ 0)"), mcp.Required()),
 	), tools.SetAnswerResultPoint(c))
 
 	// ── Questions — conditions and order ─────────────────────────────────────
@@ -467,11 +510,11 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"add_question_condition",
-		mcp.WithDescription("Add an answer as a display condition for a question (the question only shows if the given answer was selected)."),
+		mcp.WithDescription("Add conditional logic / branching: gate a question on an earlier answer. By default the question is shown only to users who selected the given answer ('only people who voted for'); with condition_reverse it is shown only to users who did NOT select it ('only people who did not vote for'). With no conditions a question is shown to everyone."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-		mcp.WithNumber("question_id", mcp.Description("Question to add condition to"), mcp.Required()),
-		mcp.WithNumber("answer_id", mcp.Description("Answer ID that triggers the condition"), mcp.Required()),
-		mcp.WithNumber("condition_reverse", mcp.Description("Invert the condition (hide instead of show): 0 (default) or 1")),
+		mcp.WithNumber("question_id", mcp.Description("The question whose visibility is being gated"), mcp.Required()),
+		mcp.WithNumber("answer_id", mcp.Description("An answer from an earlier question that triggers the condition"), mcp.Required()),
+		mcp.WithNumber("condition_reverse", mcp.Description("0 (default) = show the question only to users who selected the answer; 1 = show it only to users who did NOT select the answer.")),
 	), tools.AddQuestionCondition(c))
 
 	s.AddTool(mcp.NewTool(
@@ -722,9 +765,11 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"create_pixel_code",
-		mcp.WithDescription("Create a new pixel code snippet (iframe, img, or script tag HTML)."),
+		mcp.WithDescription("Create a reusable pixel/tracking snippet. After creating it, attach it with the set_*_pixel_code tools to a content's cover, a question, an answer, or a result (view or click) so it fires at that exact point in the user's session — used for conversion tracking, retargeting, and analytics (Meta/Google/GTM etc.)."),
 		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
-		mcp.WithString("code", mcp.Description("HTML snippet containing the pixel code"), mcp.Required()),
+		mcp.WithString("code", mcp.Description(`HTML snippet (img, iframe, or script tag) fired when this pixel is triggered. You may embed dynamic placeholder tokens that Poltio substitutes at fire time:
+[parent_page_url] (URL of the page embedding the widget, escaped), [content_id], [content_title], [q_title], [q_number], [q_id], [a_title], [a_number], [a_id], [r_title], [r_number], [r_id], [r_source_id] (the product's ID from your data-source feed), [voter_id], [puid] (your own UUID passed on the widget URL), [session_id].
+Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id]"/>.`), mcp.Required()),
 	), tools.CreatePixelCode(c))
 
 	s.AddTool(mcp.NewTool(
@@ -732,7 +777,7 @@ func main() {
 		mcp.WithDescription("Update an existing pixel code snippet."),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Human-readable name")),
-		mcp.WithString("code", mcp.Description("HTML snippet")),
+		mcp.WithString("code", mcp.Description(`HTML snippet (img, iframe, or script tag). Supports dynamic tokens replaced at fire time: [parent_page_url], [content_id], [content_title], [q_title], [q_number], [q_id], [a_title], [a_number], [a_id], [r_title], [r_number], [r_id], [r_source_id], [voter_id], [puid], [session_id].`)),
 	), tools.UpdatePixelCode(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1031,12 +1076,12 @@ func main() {
 	// ── Data Sources ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_data_sources",
-		mcp.WithDescription("List data sources connected to this account."),
+		mcp.WithDescription("List the product/catalog data sources connected to this account, with each one's pipeline status (e.g. waiting for approval, in review, processing, up to date, or failed). Data sources are product feeds (e.g. a Shopify catalog) that power Searchable Product Finder content — their items become the results users are matched to."),
 	), tools.ListDataSources(c))
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
-		mcp.WithDescription("Submit a new data source (XML/JSON feed URL) for review."),
+		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. It enters a review/import pipeline before it goes live; once imported, its items can be served as results in Searchable Product Finder content. Use upload_data_source instead to send a file directly (CSV/XML/JSON/TXT)."),
 		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
 		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
 		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
@@ -1103,12 +1148,12 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"create_widget",
-		mcp.WithDescription("Create a new dynamic widget."),
-		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Widget name")),
-		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
+		mcp.WithDescription("Create a Dynamic Widget: a placement rule that auto-loads a chosen content item on your site through the Poltio embed snippet, either on every page or only on specific page URLs. Lets you swap which content shows where without editing your site code."),
+		mcp.WithString("public_id", mcp.Description("Public ID of the content this widget displays"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Internal name for the widget")),
+		mcp.WithNumber("is_default", mcp.Description("Make this the default widget shown on pages with no more specific match: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated URLs for the widget")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). Leave empty to show on all pages (For All Pages).")),
 	), tools.CreateWidget(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1125,7 +1170,7 @@ func main() {
 		mcp.WithString("name", mcp.Description("Widget name")),
 		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated URLs for the widget")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget appears. Empty = all pages.")),
 	), tools.UpdateWidget(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1186,22 +1231,22 @@ func main() {
 
 	s.AddTool(mcp.NewTool(
 		"list_conversion_settings",
-		mcp.WithDescription("List conversion tracking URLs defined for this account."),
+		mcp.WithDescription("List the checkout/success page URLs registered for conversion tracking. When a user who interacted with a Poltio widget later lands on one of these pages, Poltio attributes a conversion — letting you measure widget-driven sales/sign-ups."),
 	), tools.ListConversionSettings(c))
 
 	s.AddTool(mcp.NewTool(
 		"create_conversion_setting",
-		mcp.WithDescription("Add a new checkout success URL for conversion tracking."),
-		mcp.WithString("url", mcp.Description("Checkout success page URL"), mcp.Required()),
-		mcp.WithNumber("catch_all", mcp.Description("Report all conversions: 0 or 1")),
+		mcp.WithDescription("Register a checkout/order-success page URL so Poltio can count it as a conversion when reached by users who engaged with a widget. Add the same success page your site shows after a purchase or sign-up."),
+		mcp.WithString("url", mcp.Description("The checkout/order-success page URL on your site, e.g. https://shop.example.com/order/complete"), mcp.Required()),
+		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only count visits attributable to a prior widget interaction. Default: 1.")),
 	), tools.CreateConversionSetting(c))
 
 	s.AddTool(mcp.NewTool(
 		"update_conversion_setting",
-		mcp.WithDescription("Update an existing conversion tracking URL."),
+		mcp.WithDescription("Update a registered conversion success URL."),
 		mcp.WithNumber("conversion_setting_id", mcp.Description("Conversion setting ID"), mcp.Required()),
-		mcp.WithString("url", mcp.Description("New URL")),
-		mcp.WithNumber("catch_all", mcp.Description("Report all conversions: 0 or 1")),
+		mcp.WithString("url", mcp.Description("New checkout/order-success page URL")),
+		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only those attributable to a widget interaction.")),
 	), tools.UpdateConversionSetting(c))
 
 	s.AddTool(mcp.NewTool(
