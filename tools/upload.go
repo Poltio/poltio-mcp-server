@@ -50,25 +50,41 @@ func UploadImage(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mc
 			return nil, fmt.Errorf("ext must be one of: png, jpg, jpeg, gif, webp")
 		}
 
-		// Strip data URI prefix if already present, then rebuild it.
-		raw := f
-		if idx := strings.Index(raw, ";base64,"); idx != -1 {
-			raw = raw[idx+8:]
-		}
-		// Strip whitespace/newlines: the base64 CLI wraps output at 76 chars,
-		// and Poltio decodes strictly ("invalid base64 encoding" on stray chars).
-		raw = strings.Map(func(r rune) rune {
+		// Strip whitespace/newlines first so data URI prefix detection is robust
+		// against wrapped or spaced prefixes (e.g. "data:image/png;\nbase64,").
+		// The base64 CLI wraps output at 76 chars, and Poltio decodes strictly
+		// ("invalid base64 encoding" on stray chars).
+		raw := strings.Map(func(r rune) rune {
 			switch r {
 			case '\n', '\r', ' ', '\t':
 				return -1
 			}
 			return r
-		}, raw)
+		}, f)
+		if raw == "" {
+			return nil, fmt.Errorf("image_base64 is empty")
+		}
+
+		// Strip data URI prefix if already present, then rebuild it.
+		if idx := strings.Index(raw, ";base64,"); idx != -1 {
+			raw = raw[idx+8:]
+		}
+		if raw == "" {
+			return nil, fmt.Errorf("image_base64 is empty")
+		}
+
+		// Cheap pre-flight size check to avoid allocating/decoding huge payloads.
+		if base64.StdEncoding.DecodedLen(len(raw)) > maxImageSizeBytes {
+			return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
+		}
 
 		// Reject malformed base64 before the API does.
 		decoded, err := base64.StdEncoding.Strict().DecodeString(raw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 encoding: %w", err)
+		}
+		if len(decoded) == 0 {
+			return nil, fmt.Errorf("image_base64 is empty")
 		}
 		if len(decoded) > maxImageSizeBytes {
 			return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")

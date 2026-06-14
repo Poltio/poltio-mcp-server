@@ -105,6 +105,51 @@ func TestUploadImage_StripsWhitespace(t *testing.T) {
 	}
 }
 
+func TestUploadImage_StripsWhitespaceInDataURIPrefix(t *testing.T) {
+	var gotFields map[string]string
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(path string, fields map[string]string) ([]byte, error) {
+			gotFields = fields
+			return []byte(`{}`), nil
+		},
+	}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": "data:image/gif;\nbase64," + tinyGIF,
+		"ext":          "gif",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(gotFields["f"], "data:image/gif;base64,") {
+		t.Errorf("f field should start with data:image/gif;base64,, got %q", gotFields["f"])
+	}
+}
+
+func TestUploadImage_EmptyPayload(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": "   \n\t  ",
+		"ext":          "png",
+	}))
+	if err == nil {
+		t.Fatal("expected error for empty image_base64, got nil")
+	}
+}
+
+func TestUploadImage_EmptyPayloadAfterPrefix(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": "data:image/png;base64,",
+		"ext":          "png",
+	}))
+	if err == nil {
+		t.Fatal("expected error for empty image data, got nil")
+	}
+}
+
 func TestUploadImage_JpgMapsToJpegMIME(t *testing.T) {
 	// Re-encode the tiny GIF as base64 but request jpg; the tool should build a
 	// data:image/jpeg URI even though the underlying bytes are still a GIF.
