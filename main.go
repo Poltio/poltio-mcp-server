@@ -337,9 +337,9 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
-		mcp.WithNumber("allow_multiple_answers", mcp.Description("Allow selecting multiple answers: 0 or 1")),
-		mcp.WithNumber("is_skippable", mcp.Description("Allow skipping this question: 0 or 1")),
-		mcp.WithNumber("rotate_answers", mcp.Description("Randomise answer order per user: 0 or 1")),
+		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 or 1. Pair with max_multi_punch_answer to cap selections.")),
+		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 or 1")),
+		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 or 1")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
 		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
 		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
@@ -399,13 +399,13 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("title", mcp.Description("New answer text")),
 		mcp.WithString("background", mcp.Description("Answer image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the answer image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL after a user picks this answer, e.g. '&color=blue'.")),
-		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content gives_feedback): 0 or 1")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result URL after a user picks this answer, e.g. '&color=blue'. Carries the selection into downstream lead/redirect URLs.")),
+		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content attributes_json gives_feedback): 0 or 1")),
 		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer for a quiz question: 0 or 1")),
-		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this deselects all other answers: 0 or 1")),
+		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this answer deselects all others (e.g. a 'None of the above' option): 0 or 1")),
 		mcp.WithString("search_query", mcp.Description("Searchable Product Finder only: search-index query run to fetch matching results when this answer is selected.")),
 		mcp.WithString("search_filter", mcp.Description("Searchable Product Finder only: search-index filter applied when this answer is selected, e.g. 'color: [blue]'.")),
-		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question.")),
+		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question. Lower shows first.")),
 		mcp.WithNumber("max_vote", mcp.Description("Cap this answer at this many votes; once reached it is disabled and disabled_msg is shown. 0 = unlimited.")),
 		mcp.WithString("addon", mcp.Description("Extra metadata attached to this answer; forwarded to GTM events, Pixel events, webhooks and leads when the answer is selected.")),
 		mcp.WithString("disabled_msg", mcp.Description("Message shown in place of this answer once it is disabled (e.g. after hitting max_vote).")),
@@ -474,12 +474,12 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("desc", mcp.Description("New result description / body text")),
 		mcp.WithString("background", mcp.Description("Result image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the result image")),
-		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result/redirect URL for this result.")),
+		mcp.WithString("luv", mcp.Description("Lead URL variable: query string appended to the result/redirect URL for this result, e.g. '&result=thanks'.")),
 		mcp.WithString("url", mcp.Description("Call-to-action URL the result's button links to.")),
 		mcp.WithString("url_text", mcp.Description("Label for the call-to-action button (used with url).")),
-		mcp.WithString("search", mcp.Description("Searchable Product Finder: primary search terms used to match this result.")),
+		mcp.WithString("search", mcp.Description("Searchable Product Finder: primary search terms used to match this result to answer-driven queries.")),
 		mcp.WithString("search2", mcp.Description("Searchable Product Finder: secondary search terms for matching this result.")),
-		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content).")),
+		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content). The result shows when the user's points are between min_c and max_c.")),
 		mcp.WithNumber("max_c", mcp.Description("Highest total score that maps to this result (test/scored content).")),
 		mcp.WithNumber("is_default", mcp.Description("Make this the catch-all result, shown when no score range or search match applies: 0 or 1.")),
 	), tools.UpdateResult(c))
@@ -777,7 +777,9 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Update an existing pixel code snippet."),
 		mcp.WithNumber("pixel_code_id", mcp.Description("Pixel code ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Human-readable name")),
-		mcp.WithString("code", mcp.Description(`HTML snippet (img, iframe, or script tag). Supports dynamic tokens replaced at fire time: [parent_page_url], [content_id], [content_title], [q_title], [q_number], [q_id], [a_title], [a_number], [a_id], [r_title], [r_number], [r_id], [r_source_id], [voter_id], [puid], [session_id].`)),
+		mcp.WithString("code", mcp.Description(`HTML snippet (img, iframe, or script tag) fired when this pixel is triggered. You may embed dynamic placeholder tokens that Poltio substitutes at fire time:
+[parent_page_url] (URL of the page embedding the widget, escaped), [content_id], [content_title], [q_title], [q_number], [q_id], [a_title], [a_number], [a_id], [r_title], [r_number], [r_id], [r_source_id] (the product's ID from your data-source feed), [voter_id], [puid] (your own UUID passed on the widget URL), [session_id].
+Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id]"/>.`)),
 	), tools.UpdatePixelCode(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1170,7 +1172,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("name", mcp.Description("Widget name")),
 		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget appears. Empty = all pages.")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). Leave empty to show on all pages (For All Pages).")),
 	), tools.UpdateWidget(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1245,7 +1247,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"update_conversion_setting",
 		mcp.WithDescription("Update a registered conversion success URL."),
 		mcp.WithNumber("conversion_setting_id", mcp.Description("Conversion setting ID"), mcp.Required()),
-		mcp.WithString("url", mcp.Description("New checkout/order-success page URL")),
+		mcp.WithString("url", mcp.Description("New checkout/order-success page URL, e.g. https://shop.example.com/order/complete")),
 		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only those attributable to a widget interaction.")),
 	), tools.UpdateConversionSetting(c))
 
