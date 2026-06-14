@@ -287,10 +287,10 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"upload_image",
-		mcp.WithDescription("Upload a base64-encoded image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
-		mcp.WithString("image_base64", mcp.Description("Base64-encoded image data (no data URI prefix, just the raw base64 string)"), mcp.Required()),
-		mcp.WithString("ext", mcp.Description("File extension without the dot, e.g. png, jpg, webp"), mcp.Required()),
-		mcp.WithString("bucket", mcp.Description("Optional storage bucket name")),
+		mcp.WithDescription("Upload a base64-encoded image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. Images must be <= 5 MB and one of the supported formats: png, jpg, jpeg, gif, webp. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
+		mcp.WithString("image_base64", mcp.Description("Base64-encoded image data. Accepts either a raw base64 string or a data URI such as data:image/png;base64,...."), mcp.Required()),
+		mcp.WithString("ext", mcp.Description("File extension without the dot. Supported values: png, jpg, jpeg, gif, webp."), mcp.Required()),
+		mcp.WithString("bucket", mcp.Description("Optional storage path prefix. May only contain letters, numbers, slashes, underscores, and hyphens.")),
 	), tools.UploadImage(c))
 
 	// ── Questions ─────────────────────────────────────────────────────────────
