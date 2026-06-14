@@ -78,16 +78,15 @@ func UploadImage(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mc
 			return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
 		}
 
-		// Reject malformed base64 before the API does.
+		// Reject malformed base64 before the API does. The decoded size is already
+		// bounded by the pre-flight DecodedLen check above, so no further size check
+		// is needed after decoding.
 		decoded, err := base64.StdEncoding.Strict().DecodeString(raw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 encoding: %w", err)
 		}
 		if len(decoded) == 0 {
 			return nil, fmt.Errorf("image_base64 is empty")
-		}
-		if len(decoded) > maxImageSizeBytes {
-			return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
 		}
 
 		// image/jpg is not a valid MIME type; the canonical form is image/jpeg.
