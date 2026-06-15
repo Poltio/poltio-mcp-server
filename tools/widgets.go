@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -46,7 +47,11 @@ func CreateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 			body["is_active"] = v == 1
 		}
 		if v := req.GetString("urls", ""); v != "" {
-			body["urls"] = v
+			parts := strings.Split(v, ",")
+			for i := range parts {
+				parts[i] = strings.TrimSpace(parts[i])
+			}
+			body["urls"] = parts
 		}
 		data, err := c.Post("/platform/widgets", body)
 		if err != nil {
@@ -90,7 +95,11 @@ func UpdateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 			body["is_active"] = v == 1
 		}
 		if v := req.GetString("urls", ""); v != "" {
-			body["urls"] = v
+			parts := strings.Split(v, ",")
+			for i := range parts {
+				parts[i] = strings.TrimSpace(parts[i])
+			}
+			body["urls"] = parts
 		}
 		data, err := c.Put("/platform/widgets/"+strconv.Itoa(widgetID), body)
 		if err != nil {
