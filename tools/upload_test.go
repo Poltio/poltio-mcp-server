@@ -15,6 +15,12 @@ import (
 // 1x1 transparent GIF, 43 bytes decoded.
 const tinyGIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
 
+// Byte sequences carrying valid image magic bytes, enough for content sniffing.
+var (
+	tinyJPEG = base64.StdEncoding.EncodeToString(append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, make([]byte, 20)...))
+	tinyPNG  = base64.StdEncoding.EncodeToString(append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 20)...))
+)
+
 type mockUploadClient struct {
 	postFormMultipartFunc func(path string, fields map[string]string) ([]byte, error)
 }
@@ -150,9 +156,9 @@ func TestUploadImage_EmptyPayloadAfterPrefix(t *testing.T) {
 	}
 }
 
-func TestUploadImage_JpgMapsToJpegMIME(t *testing.T) {
-	// Re-encode the tiny GIF as base64 but request jpg; the tool should build a
-	// data:image/jpeg URI even though the underlying bytes are still a GIF.
+func TestUploadImage_JpegMIMEFromContent(t *testing.T) {
+	// The data URI MIME is derived from the sniffed content, mirroring the
+	// backend, so JPEG bytes produce the canonical image/jpeg (never image/jpg).
 	var gotFields map[string]string
 	mock := &mockUploadClient{
 		postFormMultipartFunc: func(path string, fields map[string]string) ([]byte, error) {
@@ -162,14 +168,14 @@ func TestUploadImage_JpgMapsToJpegMIME(t *testing.T) {
 	}
 	handler := tools.UploadImage(mock)
 	_, err := handler(context.Background(), callUploadRequest(map[string]any{
-		"image_base64": tinyGIF,
+		"image_base64": tinyJPEG,
 		"ext":          "jpg",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(gotFields["f"], "data:image/jpeg;base64,") {
-		t.Errorf("f field should use image/jpeg MIME for jpg ext, got %q", gotFields["f"])
+		t.Errorf("f field should use image/jpeg MIME for JPEG content, got %q", gotFields["f"])
 	}
 }
 
@@ -183,7 +189,7 @@ func TestUploadImage_NormalizesUppercaseExt(t *testing.T) {
 	}
 	handler := tools.UploadImage(mock)
 	_, err := handler(context.Background(), callUploadRequest(map[string]any{
-		"image_base64": tinyGIF,
+		"image_base64": tinyJPEG,
 		"ext":          "JPG",
 	}))
 	if err != nil {
@@ -194,6 +200,44 @@ func TestUploadImage_NormalizesUppercaseExt(t *testing.T) {
 	}
 	if !strings.HasPrefix(gotFields["f"], "data:image/jpeg;base64,") {
 		t.Errorf("f field should use image/jpeg MIME, got %q", gotFields["f"])
+	}
+}
+
+func TestUploadImage_MIMEFromContentNotExt(t *testing.T) {
+	// The backend ignores ext and sniffs the bytes; the tool mirrors that, so a
+	// mismatched ext does not change the data URI MIME (content wins).
+	var gotFields map[string]string
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(path string, fields map[string]string) ([]byte, error) {
+			gotFields = fields
+			return []byte(`{}`), nil
+		},
+	}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": tinyPNG,
+		"ext":          "jpg",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(gotFields["f"], "data:image/png;base64,") {
+		t.Errorf("f field MIME should follow PNG content, not jpg ext, got %q", gotFields["f"])
+	}
+}
+
+func TestUploadImage_RejectsNonImage(t *testing.T) {
+	// Valid base64 that decodes to non-image bytes must be rejected before the
+	// API sees it, mirroring the backend's finfo/getimagesizefromstring check.
+	notAnImage := base64.StdEncoding.EncodeToString([]byte("this is plain text, not an image at all"))
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": notAnImage,
+		"ext":          "png",
+	}))
+	if err == nil {
+		t.Fatal("expected error for valid base64 that is not an image, got nil")
 	}
 }
 
@@ -250,19 +294,6 @@ func TestUploadImage_TooLarge(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("expected error for oversized image, got nil")
-	}
-}
-
-func TestUploadImage_InvalidBucket(t *testing.T) {
-	mock := &mockUploadClient{}
-	handler := tools.UploadImage(mock)
-	_, err := handler(context.Background(), callUploadRequest(map[string]any{
-		"image_base64": tinyGIF,
-		"ext":          "png",
-		"bucket":       "bad bucket!",
-	}))
-	if err == nil {
-		t.Fatal("expected error for invalid bucket, got nil")
 	}
 }
 

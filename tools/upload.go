@@ -1,10 +1,10 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -12,29 +12,46 @@ import (
 
 const maxImageSizeBytes = 5 * 1024 * 1024
 
-var (
-	allowedImageExts = map[string]bool{
-		"png":  true,
-		"jpg":  true,
-		"jpeg": true,
-		"gif":  true,
-		"webp": true,
-	}
-	bucketRegex = regexp.MustCompile(`^[a-zA-Z0-9\/_-]+$`)
-)
+var allowedImageExts = map[string]bool{
+	"png":  true,
+	"jpg":  true,
+	"jpeg": true,
+	"gif":  true,
+	"webp": true,
+}
 
 type UploadClient interface {
 	PostFormMultipart(path string, fields map[string]string) ([]byte, error)
 	PostFormFile(path, fieldName, filename string, content []byte) ([]byte, error)
 }
 
+// sniffImageType inspects the magic bytes of decoded image data and returns the
+// canonical format ("png", "jpeg", "gif", "webp") or "" if unrecognized. This
+// mirrors the backend's finfo/getimagesizefromstring content check, so a
+// model-fabricated or corrupt payload that happens to be valid base64 but isn't
+// a real image fails here with a clear message instead of an opaque API 400.
+func sniffImageType(b []byte) string {
+	switch {
+	case len(b) >= 8 && bytes.Equal(b[:8], []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}):
+		return "png"
+	case len(b) >= 3 && bytes.Equal(b[:3], []byte{0xFF, 0xD8, 0xFF}):
+		return "jpeg"
+	case len(b) >= 6 && (bytes.Equal(b[:6], []byte("GIF87a")) || bytes.Equal(b[:6], []byte("GIF89a"))):
+		return "gif"
+	case len(b) >= 12 && bytes.Equal(b[:4], []byte("RIFF")) && bytes.Equal(b[8:12], []byte("WEBP")):
+		return "webp"
+	}
+	return ""
+}
+
 // UploadImage uploads a base64-encoded image to Poltio and returns the file path.
 // Use the returned "file" value as the background field for content, questions, answers, or results.
+//
+// The storage bucket is chosen by the API server, not the caller.
 //
 // API limits enforced here:
 //   - ext must be png, jpg, jpeg, gif, or webp
 //   - decoded image must be <= 5 MB
-//   - bucket, if provided, may only contain letters, numbers, /, _, and -
 func UploadImage(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		f, err := req.RequireString("image_base64")
@@ -89,19 +106,19 @@ func UploadImage(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mc
 			return nil, fmt.Errorf("image_base64 is empty")
 		}
 
-		// image/jpg is not a valid MIME type; the canonical form is image/jpeg.
-		mime := ext
-		if mime == "jpg" {
-			mime = "jpeg"
+		// Verify the decoded bytes are actually a supported image. The backend
+		// derives the extension from sniffed content (ignoring the request's ext),
+		// so reject non-image payloads here with a precise error.
+		sniffed := sniffImageType(decoded)
+		if sniffed == "" {
+			return nil, fmt.Errorf("decoded data is not a supported image (png, jpg, jpeg, gif, webp)")
 		}
+
+		// image/jpg is not a valid MIME type; the canonical form is image/jpeg.
+		// Use the sniffed type so the data URI matches the actual content.
+		mime := sniffed
 		dataURI := "data:image/" + mime + ";base64," + raw
 		fields := map[string]string{"f": dataURI, "ext": ext}
-		if bucket := req.GetString("bucket", ""); bucket != "" {
-			if !bucketRegex.MatchString(bucket) {
-				return nil, fmt.Errorf("bucket may only contain letters, numbers, slashes, underscores, and hyphens")
-			}
-			fields["bucket"] = bucket
-		}
 		data, err := c.PostFormMultipart("/platform/content/upload", fields)
 		if err != nil {
 			return nil, fmt.Errorf("upload_image: %w", err)
