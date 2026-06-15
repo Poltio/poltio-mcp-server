@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +15,10 @@ import (
 
 	"github.com/Poltio/poltio-mcp-server/tools"
 )
+
+// pngBytes is a minimal byte sequence carrying valid PNG magic bytes, enough
+// for content sniffing, used by file/url tests that need raw bytes on disk.
+var pngBytes = append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 20)...)
 
 // 1x1 transparent GIF, 43 bytes decoded.
 const tinyGIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
@@ -250,12 +258,22 @@ func TestUploadImage_MissingImageBase64(t *testing.T) {
 	}
 }
 
-func TestUploadImage_MissingExt(t *testing.T) {
-	mock := &mockUploadClient{}
+func TestUploadImage_OmittedExtDerivedFromContent(t *testing.T) {
+	// ext is optional; when omitted it is derived from the sniffed content.
+	var gotFields map[string]string
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(_ string, fields map[string]string) ([]byte, error) {
+			gotFields = fields
+			return []byte(`{}`), nil
+		},
+	}
 	handler := tools.UploadImage(mock)
 	_, err := handler(context.Background(), callUploadRequest(map[string]any{"image_base64": tinyGIF}))
-	if err == nil {
-		t.Fatal("expected error for missing ext, got nil")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFields["ext"] != "gif" {
+		t.Errorf("ext should be derived as gif, got %q", gotFields["ext"])
 	}
 }
 
@@ -294,6 +312,160 @@ func TestUploadImage_TooLarge(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("expected error for oversized image, got nil")
+	}
+}
+
+func TestUploadImage_FromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pic.png")
+	if err := os.WriteFile(path, pngBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var gotFields map[string]string
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(_ string, fields map[string]string) ([]byte, error) {
+			gotFields = fields
+			return []byte(`{"file":"content/gcp/1.png"}`), nil
+		},
+	}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_path": path,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ext derived from sniffed content when omitted.
+	if gotFields["ext"] != "png" {
+		t.Errorf("ext should be derived as png, got %q", gotFields["ext"])
+	}
+	if !strings.HasPrefix(gotFields["f"], "data:image/png;base64,") {
+		t.Errorf("f field should start with data:image/png;base64,, got %q", gotFields["f"])
+	}
+}
+
+func TestUploadImage_FromFileMissing(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_path": filepath.Join(t.TempDir(), "does-not-exist.png"),
+	}))
+	if err == nil {
+		t.Fatal("expected error for missing file, got nil")
+	}
+}
+
+func TestUploadImage_FromFileRejectsNonImage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notimage.png")
+	if err := os.WriteFile(path, []byte("plain text, not an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_path": path,
+	}))
+	if err == nil {
+		t.Fatal("expected error for non-image file, got nil")
+	}
+}
+
+func TestUploadImage_FromURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(pngBytes)
+	}))
+	defer srv.Close()
+	defer tools.SetImageHTTPClient(srv.Client())()
+	var gotFields map[string]string
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(_ string, fields map[string]string) ([]byte, error) {
+			gotFields = fields
+			return []byte(`{"file":"content/gcp/1.png"}`), nil
+		},
+	}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": srv.URL,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(gotFields["f"], "data:image/png;base64,") {
+		t.Errorf("f field should start with data:image/png;base64,, got %q", gotFields["f"])
+	}
+}
+
+func TestUploadImage_FromURLHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	defer tools.SetImageHTTPClient(srv.Client())()
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": srv.URL,
+	}))
+	if err == nil {
+		t.Fatal("expected error for HTTP 404, got nil")
+	}
+}
+
+func TestUploadImage_FromURLBlocksPrivateAddress(t *testing.T) {
+	// Uses the real guarded client (not the test override): the dialer's Control
+	// hook must reject a loopback target before any request is made, guarding
+	// against SSRF to internal services / the cloud metadata endpoint.
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": "http://127.0.0.1/internal.png",
+	}))
+	if err == nil {
+		t.Fatal("expected error for loopback address, got nil")
+	}
+}
+
+func TestUploadImage_FromURLBlocksMetadataEndpoint(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": "http://169.254.169.254/computeMetadata/v1/",
+	}))
+	if err == nil {
+		t.Fatal("expected error for link-local metadata address, got nil")
+	}
+}
+
+func TestUploadImage_FromURLRejectsNonHTTPScheme(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": "file:///etc/passwd",
+	}))
+	if err == nil {
+		t.Fatal("expected error for non-http(s) scheme, got nil")
+	}
+}
+
+func TestUploadImage_NoSource(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{"ext": "png"}))
+	if err == nil {
+		t.Fatal("expected error when no image source provided, got nil")
+	}
+}
+
+func TestUploadImage_MultipleSources(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_base64": tinyGIF,
+		"image_url":    "https://example.com/x.png",
+	}))
+	if err == nil {
+		t.Fatal("expected error when multiple sources provided, got nil")
 	}
 }
 

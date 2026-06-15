@@ -287,9 +287,11 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"upload_image",
-		mcp.WithDescription("Upload a base64-encoded image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. Images must be <= 5 MB and one of the supported formats: png, jpg, jpeg, gif, webp. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
-		mcp.WithString("image_base64", mcp.Description("Base64-encoded image data. Accepts either a raw base64 string or a data URI such as data:image/png;base64,...."), mcp.Required()),
-		mcp.WithString("ext", mcp.Description("File extension without the dot. Supported values: png, jpg, jpeg, gif, webp."), mcp.Required()),
+		mcp.WithDescription("Upload an image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. Provide the image with EXACTLY ONE of image_path, image_url, or image_base64. PREFER image_path or image_url: the server reads the bytes itself, so the image never passes through the conversation — base64 is slow and fails for larger images because the whole payload has to be generated as the tool argument. Images must be <= 5 MB and one of the supported formats: png, jpg, jpeg, gif, webp. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
+		mcp.WithString("image_path", mcp.Description("Preferred. Local filesystem path to the image file; the server reads it directly. Use this whenever the image exists on disk where the server runs (e.g. a saved or generated file).")),
+		mcp.WithString("image_url", mcp.Description("An http(s) URL to the image; the server fetches it directly. Use this for remotely hosted images instead of downloading and re-encoding them.")),
+		mcp.WithString("image_base64", mcp.Description("Fallback for when you only have raw bytes. Base64-encoded image data, either a raw base64 string or a data URI such as data:image/png;base64,.... Avoid for large images — the entire payload must be emitted as the tool argument, which is slow and can fail.")),
+		mcp.WithString("ext", mcp.Description("Optional file extension without the dot: png, jpg, jpeg, gif, webp. If omitted, it is derived from the image content.")),
 	), tools.UploadImage(c))
 
 	// ── Questions ─────────────────────────────────────────────────────────────
