@@ -48,10 +48,15 @@ func CreateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetString("urls", ""); v != "" {
 			parts := strings.Split(v, ",")
-			for i := range parts {
-				parts[i] = strings.TrimSpace(parts[i])
+			filtered := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if s := strings.TrimSpace(p); s != "" {
+					filtered = append(filtered, s)
+				}
 			}
-			body["urls"] = parts
+			if len(filtered) > 0 {
+				body["urls"] = filtered
+			}
 		}
 		data, err := c.Post("/platform/widgets", body)
 		if err != nil {
@@ -96,10 +101,15 @@ func UpdateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetString("urls", ""); v != "" {
 			parts := strings.Split(v, ",")
-			for i := range parts {
-				parts[i] = strings.TrimSpace(parts[i])
+			filtered := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if s := strings.TrimSpace(p); s != "" {
+					filtered = append(filtered, s)
+				}
 			}
-			body["urls"] = parts
+			if len(filtered) > 0 {
+				body["urls"] = filtered
+			}
 		}
 		data, err := c.Put("/platform/widgets/"+strconv.Itoa(widgetID), body)
 		if err != nil {
