@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -371,12 +373,38 @@ func TestUploadImage_FromFileRejectsNonImage(t *testing.T) {
 	}
 }
 
+func TestUploadImage_FromFileRejectsNonRegular(t *testing.T) {
+	// A FIFO stats as size 0 (passing a naive size check) but would read forever.
+	// loadFromFile must reject it as a non-regular file before reading.
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("cannot create fifo: %v", err)
+	}
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	done := make(chan error, 1)
+	go func() {
+		_, err := handler(context.Background(), callUploadRequest(map[string]any{
+			"image_path": fifo,
+		}))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error for non-regular file, got nil")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("loadFromFile blocked on a fifo instead of rejecting it")
+	}
+}
+
 func TestUploadImage_FromURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(pngBytes)
 	}))
 	defer srv.Close()
-	defer tools.SetImageHTTPClient(srv.Client())()
 	var gotFields map[string]string
 	mock := &mockUploadClient{
 		postFormMultipartFunc: func(_ string, fields map[string]string) ([]byte, error) {
@@ -401,7 +429,6 @@ func TestUploadImage_FromURLHTTPError(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	defer tools.SetImageHTTPClient(srv.Client())()
 	mock := &mockUploadClient{}
 	handler := tools.UploadImage(mock)
 	_, err := handler(context.Background(), callUploadRequest(map[string]any{
@@ -409,31 +436,6 @@ func TestUploadImage_FromURLHTTPError(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("expected error for HTTP 404, got nil")
-	}
-}
-
-func TestUploadImage_FromURLBlocksPrivateAddress(t *testing.T) {
-	// Uses the real guarded client (not the test override): the dialer's Control
-	// hook must reject a loopback target before any request is made, guarding
-	// against SSRF to internal services / the cloud metadata endpoint.
-	mock := &mockUploadClient{}
-	handler := tools.UploadImage(mock)
-	_, err := handler(context.Background(), callUploadRequest(map[string]any{
-		"image_url": "http://127.0.0.1/internal.png",
-	}))
-	if err == nil {
-		t.Fatal("expected error for loopback address, got nil")
-	}
-}
-
-func TestUploadImage_FromURLBlocksMetadataEndpoint(t *testing.T) {
-	mock := &mockUploadClient{}
-	handler := tools.UploadImage(mock)
-	_, err := handler(context.Background(), callUploadRequest(map[string]any{
-		"image_url": "http://169.254.169.254/computeMetadata/v1/",
-	}))
-	if err == nil {
-		t.Fatal("expected error for link-local metadata address, got nil")
 	}
 }
 

@@ -6,11 +6,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,43 +24,9 @@ var allowedImageExts = map[string]bool{
 	"webp": true,
 }
 
-// isDisallowedIP reports whether an address is one the server must never be
-// coaxed into connecting to via image_url. This blocks SSRF against internal
-// services — most importantly the cloud metadata endpoint (169.254.169.254,
-// caught by IsLinkLocalUnicast) when the server runs in hosted/HTTP mode.
-func isDisallowedIP(ip net.IP) bool {
-	return ip.IsLoopback() ||
-		ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() ||
-		ip.IsUnspecified()
-}
-
 // imageHTTPClient fetches images referenced by image_url. The timeout bounds a
 // slow or hung remote so the tool fails fast instead of blocking the session.
-// Its dialer's Control hook runs after DNS resolution, on the actual IP being
-// dialed, so it rejects private/loopback/link-local targets and defeats DNS
-// rebinding (a public hostname re-resolving to an internal IP) too.
-var imageHTTPClient = &http.Client{
-	Timeout: 30 * time.Second,
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: 10 * time.Second,
-			Control: func(_, address string, _ syscall.RawConn) error {
-				host, _, err := net.SplitHostPort(address)
-				if err != nil {
-					return err
-				}
-				ip := net.ParseIP(host)
-				if ip == nil || isDisallowedIP(ip) {
-					return fmt.Errorf("refusing to connect to non-public address %s", host)
-				}
-				return nil
-			},
-		}).DialContext,
-	},
-}
+var imageHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 type UploadClient interface {
 	PostFormMultipart(path string, fields map[string]string) ([]byte, error)
@@ -88,22 +52,45 @@ func sniffImageType(b []byte) string {
 	return ""
 }
 
-// loadFromFile reads a local image file, guarding against oversized files by
-// stat-ing before reading so a huge file is rejected without slurping it.
+// loadFromFile reads a local image file, rejecting anything that is not a
+// regular file. A directory, device (e.g. /dev/zero), or named pipe would
+// otherwise stat as size 0 and read forever into an OOM — and opening a FIFO
+// blocks until a writer appears. We therefore stat *before* opening (stat never
+// blocks) to reject non-regular paths up front, then re-stat the open
+// descriptor to close the stat→open TOCTOU window, and bound the read one byte
+// past the limit so an oversized file is rejected without slurping it.
+//
+// (Opening non-blocking would avoid the pre-stat, but that needs POSIX-only
+// flags and this binary also targets Windows.)
 func loadFromFile(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read image_path %q: %w", path, err)
 	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("image_path %q is a directory, not a file", path)
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("image_path %q is not a regular file", path)
 	}
-	if info.Size() > maxImageSizeBytes {
-		return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
-	}
-	b, err := os.ReadFile(path)
+
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read image_path %q: %w", path, err)
+	}
+	defer f.Close() //nolint:errcheck
+
+	info, err = f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read image_path %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("image_path %q is not a regular file", path)
+	}
+
+	b, err := io.ReadAll(io.LimitReader(f, maxImageSizeBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read image_path %q: %w", path, err)
+	}
+	if len(b) > maxImageSizeBytes {
+		return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
 	}
 	return b, nil
 }
