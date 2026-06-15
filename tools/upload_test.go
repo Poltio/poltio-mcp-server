@@ -450,6 +450,39 @@ func TestUploadImage_FromURLRejectsNonHTTPScheme(t *testing.T) {
 	}
 }
 
+func TestUploadImage_FromURLRejectsEmptyHost(t *testing.T) {
+	mock := &mockUploadClient{}
+	handler := tools.UploadImage(mock)
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": "http://",
+	}))
+	if err == nil {
+		t.Fatal("expected error for URL with no host, got nil")
+	}
+}
+
+func TestUploadImage_FromURLAcceptsUppercaseScheme(t *testing.T) {
+	// The scheme check is case-insensitive: an uppercase scheme must not be
+	// rejected (url.Parse normalizes it to lowercase).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(pngBytes)
+	}))
+	defer srv.Close()
+	mock := &mockUploadClient{
+		postFormMultipartFunc: func(_ string, _ map[string]string) ([]byte, error) {
+			return []byte(`{"file":"content/gcp/1.png"}`), nil
+		},
+	}
+	handler := tools.UploadImage(mock)
+	upperScheme := "HTTP://" + strings.TrimPrefix(srv.URL, "http://")
+	_, err := handler(context.Background(), callUploadRequest(map[string]any{
+		"image_url": upperScheme,
+	}))
+	if err != nil {
+		t.Fatalf("uppercase scheme should be accepted, got: %v", err)
+	}
+}
+
 func TestUploadImage_NoSource(t *testing.T) {
 	mock := &mockUploadClient{}
 	handler := tools.UploadImage(mock)

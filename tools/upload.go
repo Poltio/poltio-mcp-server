@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -97,11 +98,18 @@ func loadFromFile(path string) ([]byte, error) {
 
 // loadFromURL fetches a remote image, capping the read one byte past the size
 // limit so an oversized response is rejected without buffering it whole.
-func loadFromURL(ctx context.Context, url string) ([]byte, error) {
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+func loadFromURL(ctx context.Context, urlStr string) ([]byte, error) {
+	// Parse rather than prefix-match so the scheme check is case-insensitive
+	// (url.Parse lowercases the scheme), and reject anything without an http(s)
+	// scheme and a host.
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image_url: %w", err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("image_url must be an http or https URL")
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image_url: %w", err)
 	}
