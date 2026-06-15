@@ -66,7 +66,11 @@ func main() {
 		"create_content",
 		mcp.WithDescription(`Create a new Poltio content item. It starts as a draft — call publish_content to make it live.
 
-A Poltio content item is an interactive widget made of a cover screen, one or more questions (each with answers), and result screens. IMPORTANT: Every content type requires at least one result screen (add a default result with is_default=1). Without a result screen, users see nothing after answering the last question. Pick the type that matches the experience:
+A Poltio content item is an interactive widget made of a cover screen, one or more questions (each with answers), and result screens.
+
+IMPORTANT: Every content type requires at least one result screen (add a default result with is_default=1). Without a result screen, users see nothing after answering the last question.
+
+Pick the type that matches the experience:
 - poll: a standalone voting poll that shows live vote percentages and counts.
 - set: a multi-question flow. This single API type backs three dashboard presets: "Survey" (a plain set, no result logic), "Calculator"/Product Finder (set with is_calculator=1 — the result is chosen by a math formula over per-answer calculator values), and "Searchable" Product Finder (set with is_searchable=1 — results are matched by search query/filters set on the answers).
 - quiz: a right/wrong quiz. Mark one correct answer per question and set attributes_json gives_feedback=1; optionally show a timer (show_timer) and the score (display_results).
