@@ -20,6 +20,7 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil || answerType == "" {
 			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, yesno, free_text, free_number, autocomplete)")
 		}
+		isQuiz := isContentQuiz(c, publicID)
 		body := map[string]any{"answer_type": answerType}
 		if v := req.GetString("title", ""); v != "" {
 			body["title"] = v
@@ -41,6 +42,8 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		}
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
+		} else if isQuiz {
+			body["rotate_answers"] = 1
 		}
 		if v := req.GetString("name", ""); v != "" {
 			body["name"] = v
@@ -97,6 +100,7 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		if err != nil || answerType == "" {
 			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, yesno, free_text, free_number, autocomplete)")
 		}
+		isQuiz := isContentQuiz(c, publicID)
 		body := map[string]any{"answer_type": answerType}
 		if v := req.GetString("title", ""); v != "" {
 			body["title"] = v
@@ -118,6 +122,8 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
+		} else if isQuiz {
+			body["rotate_answers"] = 1
 		}
 		if v := req.GetString("name", ""); v != "" {
 			body["name"] = v
@@ -159,6 +165,20 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
+}
+
+func isContentQuiz(c ContentClient, publicID string) bool {
+	data, err := c.Get("/platform/content/"+publicID, nil)
+	if err != nil {
+		return false
+	}
+	var content struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(data, &content) == nil && content.Type == "quiz" {
+		return true
+	}
+	return false
 }
 
 func DeleteQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
