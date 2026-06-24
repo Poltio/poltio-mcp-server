@@ -1,0 +1,7 @@
+.git
+.github
+.imgenv
+dist
+*.env
+poltio-mcp-server
+README.md
