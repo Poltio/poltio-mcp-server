@@ -1,0 +1,16 @@
+name: Deploy
+on:
+  push:
+    tags:
+      - v*
+permissions: {}
+jobs:
+  trigger:
+    name: Trigger router deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger router deploy
+        env:
+          GH_TOKEN: ${{ secrets.ROUTER_DISPATCH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh workflow run deploy-mcp.yml -R Poltio/router -f image_tag="$TAG"
