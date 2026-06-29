@@ -13,4 +13,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ROUTER_DISPATCH_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: gh workflow run deploy-mcp.yml -R Poltio/router -f image_tag="$TAG"
+        run: gh workflow run deploy-mcp.yml -R Poltio/router --ref master -f image_tag="$TAG"
