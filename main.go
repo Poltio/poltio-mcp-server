@@ -23,24 +23,33 @@ type orgEntry struct {
 
 func main() {
 	token := os.Getenv("POLTIO_API_TOKEN")
-	if token == "" {
+	port := os.Getenv("PORT")
+	if port == "" && token == "" {
 		log.Fatal("POLTIO_API_TOKEN environment variable is required")
 	}
 
 	c := client.New(token)
 
-	data, err := c.GetOrganizations()
-	if err != nil {
-		log.Fatalf("failed to fetch organizations at startup: %v", err)
+	if token != "" {
+		data, err := c.GetOrganizations()
+		if err != nil {
+			if port == "" {
+				log.Fatalf("failed to fetch organizations at startup: %v", err)
+			}
+			log.Printf("warning: failed to fetch organizations at startup: %v", err)
+		} else {
+			var orgs []orgEntry
+			if err := json.Unmarshal(data, &orgs); err != nil {
+				log.Fatalf("failed to parse organizations at startup: %v", err)
+			}
+			if len(orgs) == 0 && port == "" {
+				log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
+			}
+			if len(orgs) > 0 {
+				c.SetOrgID(strconv.Itoa(orgs[0].ID))
+			}
+		}
 	}
-	var orgs []orgEntry
-	if err := json.Unmarshal(data, &orgs); err != nil {
-		log.Fatalf("failed to parse organizations at startup: %v", err)
-	}
-	if len(orgs) == 0 {
-		log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
-	}
-	c.SetOrgID(strconv.Itoa(orgs[0].ID))
 
 	s := server.NewMCPServer("poltio", version)
 
@@ -1365,22 +1374,14 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("period", mcp.Description("Billing period: month or year"), mcp.Required()),
 	), tools.CreateSubscription(c))
 
-	if port := os.Getenv("PORT"); port != "" {
+	if port != "" {
 		httpServer := server.NewStreamableHTTPServer(
 			s,
 			server.WithEndpointPath("/mcp"),
 			server.WithStreamableHTTPCORS(server.WithCORSAllowedOrigins("*")),
 		)
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer "+token {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-			httpServer.ServeHTTP(w, r)
-		})
 		log.Printf("poltio-mcp-server listening on :%s/mcp", port)
-		if err := http.ListenAndServe(":"+port, handler); err != nil {
+		if err := http.ListenAndServe(":"+port, httpServer); err != nil {
 			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 			os.Exit(1)
 		}
