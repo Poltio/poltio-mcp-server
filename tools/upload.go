@@ -32,6 +32,7 @@ var imageHTTPClient = &http.Client{Timeout: 30 * time.Second}
 type UploadClient interface {
 	PostFormMultipart(path string, fields map[string]string) ([]byte, error)
 	PostFormFile(path, fieldName, filename string, content []byte) ([]byte, error)
+	PostFormFileFields(path, fieldName, filename string, content []byte, fields map[string]string) ([]byte, error)
 }
 
 // sniffImageType inspects the magic bytes of decoded image data and returns the

@@ -1166,12 +1166,53 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
-		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. It enters a review/import pipeline before it goes live; once imported, its items can be served as results in Searchable Product Finder content. Use upload_data_source instead to send a file directly (CSV/XML/JSON/TXT)."),
+		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. After creation, configure it with set_data_source_elements and start the import with publish_data_source; once imported, its items can be served as results in Searchable Product Finder content. For a CSV file use create_csv_data_source instead."),
 		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
 		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
 		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
 		mcp.WithString("notes", mcp.Description("Optional notes for the review team")),
 	), tools.CreateDataSource(c))
+
+	s.AddTool(mcp.NewTool(
+		"create_csv_data_source",
+		mcp.WithDescription("Create a data source from a CSV file in one step (multipart upload, as the dashboard does). The record is created as type 'csv' so its columns can be inspected with get_data_source_attributes and mapped with set_data_source_elements, then imported with publish_data_source."),
+		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
+		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content"), mcp.Required()),
+		mcp.WithString("filename", mcp.Description("Filename, defaults to data.csv")),
+	), tools.CreateCSVDataSource(c))
+
+	s.AddTool(mcp.NewTool(
+		"get_data_source",
+		mcp.WithDescription("Get a single data source with its status and configured element mappings (data_source_item_elements)."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+	), tools.GetDataSource(c))
+
+	s.AddTool(mcp.NewTool(
+		"get_data_source_attributes",
+		mcp.WithDescription("Discover the columns/fields found in an uploaded or submitted data source feed, with example values per column. Use this before set_data_source_elements to see what can be mapped."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+	), tools.GetDataSourceAttributes(c))
+
+	s.AddTool(mcp.NewTool(
+		"set_data_source_elements",
+		mcp.WithDescription("Map a data source's feed columns to Poltio element types — the configuration step required before publish_data_source. The 'id', 'name', 'url' and 'image' types are mandatory for publishing; unmapped extra columns can be included as 'generic' to keep them as attributes."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+		mcp.WithString("elements_json", mcp.Description("JSON array of {\"element\": \"<column name from get_data_source_attributes>\", \"type\": \"<element type>\"}. Types: generic, id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type. Example: [{\"element\":\"id\",\"type\":\"id\"},{\"element\":\"title\",\"type\":\"name\"},{\"element\":\"url\",\"type\":\"url\"},{\"element\":\"image\",\"type\":\"image\"},{\"element\":\"price\",\"type\":\"price\"}]"), mcp.Required()),
+	), tools.SetDataSourceElements(c))
+
+	s.AddTool(mcp.NewTool(
+		"publish_data_source",
+		mcp.WithDescription("Publish a configured data source so its import pipeline starts and its items become available as Searchable Product Finder results. Requires element mappings set first via set_data_source_elements — publishing without an 'id'-typed element is rejected (\"You can not publish a data source without id element\"). Check progress with list_data_sources or get_data_source_items."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID (from list_data_sources or create_data_source)"), mcp.Required()),
+	), tools.PublishDataSource(c))
+
+	s.AddTool(mcp.NewTool(
+		"get_data_source_items",
+		mcp.WithDescription("Get paginated imported items of a published data source, to verify the import worked."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+		mcp.WithNumber("page", mcp.Description("Page number")),
+		mcp.WithNumber("per_page", mcp.Description("Results per page")),
+	), tools.GetDataSourceItems(c))
 
 	s.AddTool(mcp.NewTool(
 		"delete_data_source",

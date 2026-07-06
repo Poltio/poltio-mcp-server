@@ -43,6 +43,10 @@ func (m *mockUploadClient) PostFormFile(path, fieldName, filename string, conten
 	return nil, nil
 }
 
+func (m *mockUploadClient) PostFormFileFields(path, fieldName, filename string, content []byte, fields map[string]string) ([]byte, error) {
+	return nil, nil
+}
+
 func callUploadRequest(args map[string]any) mcp.CallToolRequest {
 	var req mcp.CallToolRequest
 	req.Params.Arguments = args

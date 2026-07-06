@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -54,6 +56,116 @@ func DeleteDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest
 		data, err := c.Delete("/platform/data-sources/" + strconv.Itoa(dataSourceID))
 		if err != nil {
 			return nil, fmt.Errorf("delete_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func CreateCSVDataSource(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		name, err := req.RequireString("name")
+		if err != nil || name == "" {
+			return nil, fmt.Errorf("name is required")
+		}
+		fileBase64, err := req.RequireString("file_base64")
+		if err != nil || fileBase64 == "" {
+			return nil, fmt.Errorf("file_base64 is required (base64-encoded CSV content)")
+		}
+		content, err := base64.StdEncoding.DecodeString(fileBase64)
+		if err != nil {
+			return nil, fmt.Errorf("file_base64 is not valid base64: %w", err)
+		}
+		filename := req.GetString("filename", "data.csv")
+		fields := map[string]string{"type": "csv", "name": name}
+		data, err := c.PostFormFileFields("/platform/data-sources", "source_file", filename, content, fields)
+		if err != nil {
+			return nil, fmt.Errorf("create_csv_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID), nil)
+		if err != nil {
+			return nil, fmt.Errorf("get_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetDataSourceAttributes(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/attributes", nil)
+		if err != nil {
+			return nil, fmt.Errorf("get_data_source_attributes: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func SetDataSourceElements(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		raw, err := req.RequireString("elements_json")
+		if err != nil || raw == "" {
+			return nil, fmt.Errorf("elements_json is required")
+		}
+		var elements []map[string]any
+		if err := json.Unmarshal([]byte(raw), &elements); err != nil {
+			return nil, fmt.Errorf("elements_json is not a valid JSON array: %w", err)
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/elements"
+		data, err := c.Post(path, map[string]any{"elements": elements})
+		if err != nil {
+			return nil, fmt.Errorf("set_data_source_elements: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetDataSourceItems(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		q := url.Values{}
+		if page := req.GetInt("page", 0); page > 0 {
+			q.Set("page", strconv.Itoa(page))
+		}
+		if perPage := req.GetInt("per_page", 0); perPage > 0 {
+			q.Set("per_page", strconv.Itoa(perPage))
+		}
+		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/items", q)
+		if err != nil {
+			return nil, fmt.Errorf("get_data_source_items: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func PublishDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		data, err := c.Post("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/publish", nil)
+		if err != nil {
+			return nil, fmt.Errorf("publish_data_source: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
