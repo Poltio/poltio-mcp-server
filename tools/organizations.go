@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -178,6 +179,99 @@ func UpdateOrgMember(c ContentClient) func(context.Context, mcp.CallToolRequest)
 			map[string]any{"user_id": userID, "role": role})
 		if err != nil {
 			return nil, fmt.Errorf("update_org_member: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+// ipRuleBody builds the request body for create/update IP rule from
+// name, allowed_json and blocked_json params.
+func ipRuleBody(req mcp.CallToolRequest) (map[string]any, error) {
+	body := map[string]any{}
+	if v := req.GetString("name", ""); v != "" {
+		body["name"] = v
+	}
+	for _, key := range []string{"allowed", "blocked"} {
+		if v := req.GetString(key+"_json", ""); v != "" {
+			var ips []string
+			if err := json.Unmarshal([]byte(v), &ips); err != nil {
+				return nil, fmt.Errorf("%s_json must be a JSON array of strings: %w", key, err)
+			}
+			body[key] = ips
+		}
+	}
+	return body, nil
+}
+
+func ListIPRules(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		orgID, err := req.RequireInt("organization_id")
+		if err != nil {
+			return nil, fmt.Errorf("organization_id is required")
+		}
+		data, err := c.Get("/platform/organizations/"+strconv.Itoa(orgID)+"/ip-rules", nil)
+		if err != nil {
+			return nil, fmt.Errorf("list_ip_rules: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func CreateIPRule(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		orgID, err := req.RequireInt("organization_id")
+		if err != nil {
+			return nil, fmt.Errorf("organization_id is required")
+		}
+		body, err := ipRuleBody(req)
+		if err != nil {
+			return nil, err
+		}
+		data, err := c.Post("/platform/organizations/"+strconv.Itoa(orgID)+"/ip-rules", body)
+		if err != nil {
+			return nil, fmt.Errorf("create_ip_rule: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func UpdateIPRule(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		orgID, err := req.RequireInt("organization_id")
+		if err != nil {
+			return nil, fmt.Errorf("organization_id is required")
+		}
+		ruleID, err := req.RequireInt("ip_rule_id")
+		if err != nil {
+			return nil, fmt.Errorf("ip_rule_id is required")
+		}
+		body, err := ipRuleBody(req)
+		if err != nil {
+			return nil, err
+		}
+		path := "/platform/organizations/" + strconv.Itoa(orgID) + "/ip-rules/" + strconv.Itoa(ruleID)
+		data, err := c.Put(path, body)
+		if err != nil {
+			return nil, fmt.Errorf("update_ip_rule: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func DeleteIPRule(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		orgID, err := req.RequireInt("organization_id")
+		if err != nil {
+			return nil, fmt.Errorf("organization_id is required")
+		}
+		ruleID, err := req.RequireInt("ip_rule_id")
+		if err != nil {
+			return nil, fmt.Errorf("ip_rule_id is required")
+		}
+		path := "/platform/organizations/" + strconv.Itoa(orgID) + "/ip-rules/" + strconv.Itoa(ruleID)
+		data, err := c.Delete(path)
+		if err != nil {
+			return nil, fmt.Errorf("delete_ip_rule: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}

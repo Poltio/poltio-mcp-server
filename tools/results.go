@@ -52,6 +52,15 @@ func AddResult(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp
 		if v := req.GetInt("is_default", -1); v >= 0 {
 			body["is_default"] = v
 		}
+		if v := req.GetString("secondary_url", ""); v != "" {
+			body["secondary_url"] = v
+		}
+		if v := req.GetString("secondary_url_text", ""); v != "" {
+			body["secondary_url_text"] = v
+		}
+		if v := req.GetString("source_id", ""); v != "" {
+			body["source_id"] = v
+		}
 		data, err := c.Post("/platform/content/"+publicID+"/result", body)
 		if err != nil {
 			return nil, fmt.Errorf("add_result: %w", err)
@@ -106,6 +115,15 @@ func UpdateResult(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetInt("is_default", -1); v >= 0 {
 			body["is_default"] = v
+		}
+		if v := req.GetString("secondary_url", ""); v != "" {
+			body["secondary_url"] = v
+		}
+		if v := req.GetString("secondary_url_text", ""); v != "" {
+			body["secondary_url_text"] = v
+		}
+		if v := req.GetString("source_id", ""); v != "" {
+			body["source_id"] = v
 		}
 		path := "/platform/content/" + publicID + "/result/" + strconv.Itoa(resultID)
 		data, err := c.Put(path, body)

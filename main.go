@@ -477,6 +477,9 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content). The result shows when the user's points are between min_c and max_c.")),
 		mcp.WithNumber("max_c", mcp.Description("Highest total score that maps to this result (test/scored content).")),
 		mcp.WithNumber("is_default", mcp.Description("Make this the catch-all result, shown when no score range or search match applies: 0 (default) or 1.")),
+		mcp.WithString("secondary_url", mcp.Description("URL for a secondary action button on the result. Overwritten by the DSC when the content is connected to a data source.")),
+		mcp.WithString("secondary_url_text", mcp.Description("Label for the secondary action button (used with secondary_url).")),
+		mcp.WithString("source_id", mcp.Description("Product ID for this result, used in GTM ecommerce events, conversion tracking and pixel codes. Overwritten by the DSC when the content is connected to a data source.")),
 	), tools.AddResult(c))
 
 	s.AddTool(mcp.NewTool(
@@ -496,6 +499,9 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithNumber("min_c", mcp.Description("Lowest total score that maps to this result (test/scored content). The result shows when the user's points are between min_c and max_c.")),
 		mcp.WithNumber("max_c", mcp.Description("Highest total score that maps to this result (test/scored content).")),
 		mcp.WithNumber("is_default", mcp.Description("Make this the catch-all result, shown when no score range or search match applies: 0 or 1.")),
+		mcp.WithString("secondary_url", mcp.Description("URL for a secondary action button on the result. Overwritten by the DSC when the content is connected to a data source.")),
+		mcp.WithString("secondary_url_text", mcp.Description("Label for the secondary action button (used with secondary_url).")),
+		mcp.WithString("source_id", mcp.Description("Product ID for this result, used in GTM ecommerce events, conversion tracking and pixel codes. Overwritten by the DSC when the content is connected to a data source.")),
 	), tools.UpdateResult(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1338,6 +1344,38 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("user_id", mcp.Description("User ID of the member"), mcp.Required()),
 		mcp.WithString("role", mcp.Description("New role: admin, user, or viewer"), mcp.Required()),
 	), tools.UpdateOrgMember(c))
+
+	s.AddTool(mcp.NewTool(
+		"list_ip_rules",
+		mcp.WithDescription("List the IP access rules of an organization."),
+		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
+	), tools.ListIPRules(c))
+
+	s.AddTool(mcp.NewTool(
+		"create_ip_rule",
+		mcp.WithDescription("Create an IP access rule for an organization, allowing or blocking IP addresses or IPv4 CIDR blocks."),
+		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Rule name, e.g. 'Office Network & VPN'")),
+		mcp.WithString("allowed_json", mcp.Description(`JSON array of allowed IPs or IPv4 CIDR blocks, e.g. ["192.168.1.0/24"]`)),
+		mcp.WithString("blocked_json", mcp.Description(`JSON array of blocked IPs or IPv4 CIDR blocks, e.g. ["203.0.113.50"]`)),
+	), tools.CreateIPRule(c))
+
+	s.AddTool(mcp.NewTool(
+		"update_ip_rule",
+		mcp.WithDescription("Update an existing IP access rule of an organization."),
+		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
+		mcp.WithNumber("ip_rule_id", mcp.Description("IP rule ID (from list_ip_rules)"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Rule name, e.g. 'Office Network & VPN'")),
+		mcp.WithString("allowed_json", mcp.Description(`JSON array of allowed IPs or IPv4 CIDR blocks, e.g. ["192.168.1.0/24"]`)),
+		mcp.WithString("blocked_json", mcp.Description(`JSON array of blocked IPs or IPv4 CIDR blocks, e.g. ["203.0.113.50"]`)),
+	), tools.UpdateIPRule(c))
+
+	s.AddTool(mcp.NewTool(
+		"delete_ip_rule",
+		mcp.WithDescription("Delete an IP access rule from an organization."),
+		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
+		mcp.WithNumber("ip_rule_id", mcp.Description("IP rule ID (from list_ip_rules)"), mcp.Required()),
+	), tools.DeleteIPRule(c))
 
 	// ── Misc ──────────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
