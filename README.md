@@ -320,6 +320,10 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `cancel_org_invite` | Cancel a pending organization invitation by email |
 | `remove_org_member` | Remove a member from an organization |
 | `update_org_member` | Update a member's role in an organization |
+| `list_ip_rules` | List the IP access rules of an organization |
+| `create_ip_rule` | Create an IP access rule (allow/block IPs or CIDR blocks) |
+| `update_ip_rule` | Update an existing IP access rule |
+| `delete_ip_rule` | Delete an IP access rule |
 
 **Subscription**
 
