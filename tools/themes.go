@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/url"
 	"strconv"
 
@@ -60,14 +59,14 @@ func CreateTheme(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil || name == "" {
 			return nil, fmt.Errorf("name is required")
 		}
-		body := map[string]any{"name": name}
+		extra := map[string]any{}
 		if raw := req.GetString("fields_json", ""); raw != "" {
-			var extra map[string]any
 			if err := json.Unmarshal([]byte(raw), &extra); err != nil {
 				return nil, fmt.Errorf("fields_json must be valid JSON: %w", err)
 			}
-			maps.Copy(body, extra)
 		}
+		extra["name"] = name
+		body := map[string]any{"name": name, "theme": extra}
 		data, err := c.Post("/platform/theme", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_theme: %w", err)
@@ -87,13 +86,32 @@ func UpdateTheme(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil || raw == "" {
 			return nil, fmt.Errorf("fields_json is required (JSON object of theme fields to update)")
 		}
-		var body map[string]any
-		if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 			return nil, fmt.Errorf("fields_json must be valid JSON: %w", err)
+		}
+		body := map[string]any{"theme": fields}
+		if v := req.GetString("name", ""); v != "" {
+			body["name"] = v
+			fields["name"] = v
 		}
 		data, err := c.Put("/platform/theme/"+strconv.Itoa(themeID), body)
 		if err != nil {
 			return nil, fmt.Errorf("update_theme: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func FindTheme(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		pageURL, err := req.RequireString("url")
+		if err != nil || pageURL == "" {
+			return nil, fmt.Errorf("url is required")
+		}
+		data, err := c.Post("/platform/theme/find", map[string]any{"url": pageURL})
+		if err != nil {
+			return nil, fmt.Errorf("find_theme: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}

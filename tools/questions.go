@@ -33,6 +33,12 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if v := req.GetString("vertical_image", ""); v != "" {
 			body["vertical_image"] = v
 		}
+		if v := req.GetString("vertical_mobile_image", ""); v != "" {
+			body["vertical_mobile_image"] = v
+		}
+		if v := req.GetString("desc", ""); v != "" {
+			body["desc"] = v
+		}
 		if v := req.GetInt("allow_multiple_answers", -1); v >= 0 {
 			body["allow_multiple_answers"] = v
 		}
@@ -41,6 +47,9 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		}
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
+		}
+		if v := req.GetInt("rotate_answers_last", -1); v >= 0 {
+			body["rotate_answers_last"] = v
 		}
 		if v := req.GetString("name", ""); v != "" {
 			body["name"] = v
@@ -110,6 +119,12 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		if v := req.GetString("vertical_image", ""); v != "" {
 			body["vertical_image"] = v
 		}
+		if v := req.GetString("vertical_mobile_image", ""); v != "" {
+			body["vertical_mobile_image"] = v
+		}
+		if v := req.GetString("desc", ""); v != "" {
+			body["desc"] = v
+		}
 		if v := req.GetInt("allow_multiple_answers", -1); v >= 0 {
 			body["allow_multiple_answers"] = v
 		}
@@ -118,6 +133,9 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		if v := req.GetInt("rotate_answers", -1); v >= 0 {
 			body["rotate_answers"] = v
+		}
+		if v := req.GetInt("rotate_answers_last", -1); v >= 0 {
+			body["rotate_answers_last"] = v
 		}
 		if v := req.GetString("name", ""); v != "" {
 			body["name"] = v

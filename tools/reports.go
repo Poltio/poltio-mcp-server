@@ -30,7 +30,7 @@ func CreateReport(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		report, err := req.RequireString("report")
 		if err != nil || report == "" {
-			return nil, fmt.Errorf("report is required (content-sessions or content-voters)")
+			return nil, fmt.Errorf("report is required (content-sessions, content-voters, voter-leads, answer-voters)")
 		}
 		body := map[string]any{"report": report}
 		if v := req.GetString("public_id", ""); v != "" {
@@ -38,6 +38,9 @@ func CreateReport(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetInt("base_id", 0); v > 0 {
 			body["base_id"] = v
+		}
+		if v := req.GetString("target_ids", ""); v != "" {
+			body["target_ids"] = v
 		}
 		data, err := c.Post("/platform/reports", body)
 		if err != nil {

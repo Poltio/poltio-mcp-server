@@ -42,6 +42,9 @@ func AddAnswer(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp
 		if v := req.GetString("luv", ""); v != "" {
 			body["luv"] = v
 		}
+		if v := req.GetString("cal_val", ""); v != "" {
+			body["cal_val"] = v
+		}
 		if v := req.GetString("search_query", ""); v != "" {
 			body["search_query"] = v
 		}
@@ -131,6 +134,9 @@ func UpdateAnswer(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetString("luv", ""); v != "" {
 			body["luv"] = v
+		}
+		if v := req.GetString("cal_val", ""); v != "" {
+			body["cal_val"] = v
 		}
 		if v := req.GetString("search_query", ""); v != "" {
 			body["search_query"] = v

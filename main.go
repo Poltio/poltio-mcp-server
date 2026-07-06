@@ -96,6 +96,8 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout cover image path")),
 		mcp.WithString("vertical_mobile_image", mcp.Description("Main cover image for single-column mobile view")),
 		mcp.WithString("embed_footer_url", mcp.Description("URL for the footer image")),
+		mcp.WithString("embed_background", mcp.Description("Background image path for the embedded widget frame")),
+		mcp.WithString("theme_id", mcp.Description("Theme ID to style the widget with (from list_themes)")),
 		mcp.WithNumber("skip_start", mcp.Description("Skip cover card and start from first question: 0 (default) or 1")),
 		mcp.WithNumber("skip_result", mcp.Description("Skip result card: 0 (default) or 1")),
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 (default) or 1")),
@@ -103,7 +105,9 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 		mcp.WithNumber("display_repeat", mcp.Description("Show play again button: 0 (default) or 1")),
 		mcp.WithNumber("is_searchable", mcp.Description("Turns a 'set' into a Searchable Product Finder: results are matched from the answers' search_query/search_filter instead of fixed score ranges. 0 (default) or 1.")),
 		mcp.WithNumber("is_calculator", mcp.Description("Turns a 'set' into a Calculator/Product Finder: the result is computed from attributes_json cal_formula over per-answer calculator values. 0 (default) or 1.")),
-		mcp.WithNumber("search_results_per_page", mcp.Description("Max number of results shown to the user for searchable content (default: 5; recommended 3–5). 0 means no results are shown.")),
+		mcp.WithNumber("search_results_per_page", mcp.Description("Max number of results shown to the user for searchable content. Range 1-10 (default: 5; recommended 3-5).")),
+		mcp.WithNumber("boost_results_min_view", mcp.Description("Searchable result boosting: minimum view count a result needs before its performance affects ranking")),
+		mcp.WithNumber("boost_results_ratio", mcp.Description("Searchable result boosting: how strongly result performance affects ranking, 0-100")),
 		mcp.WithNumber("result_loading", mcp.Description("Display a loading screen between the last question and the result: 0 (default) or 1")),
 		mcp.WithString("loading_next_question_label", mcp.Description("Custom loading label between questions")),
 		mcp.WithString("loading_result_label", mcp.Description("Custom loading label between last question and result")),
@@ -128,6 +132,14 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 - canonical (string URL): add a canonical rel tag to the widget page.
 - redirect (string URL): redirect the widget page to this URL.
 - keywords (string): meta keywords for the widget page.`)),
+		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object. Fields:
+- design (string): widget design version — "" (empty, legacy 2025 design) or "2026-01" (new vertical-image design; enables the options below).
+- result_background_blur ("on"/"off"): blur the background image behind result cards (2026 design only).
+- share ("off"/""): set "off" to hide the share button (2026 design only).
+- list_bullet_points ("true"/""): render result descriptions as bullet points (searchable content, 2026 design only).
+- bundle_title (string): heading above bundled/companion results, e.g. "Pairs perfectly with".
+- result_button_placement ("top"/"bottom"): where the result CTA button is placed.
+- hide_result_session_id (0/1): hide the session ID line on the result screen.`)),
 	), tools.CreateContent(c))
 
 	s.AddTool(mcp.NewTool(
@@ -160,6 +172,8 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout cover image path")),
 		mcp.WithString("vertical_mobile_image", mcp.Description("Main cover image for single-column mobile view")),
 		mcp.WithString("embed_footer_url", mcp.Description("URL for the footer image")),
+		mcp.WithString("embed_background", mcp.Description("Background image path for the embedded widget frame")),
+		mcp.WithString("theme_id", mcp.Description("Theme ID to style the widget with (from list_themes)")),
 		mcp.WithNumber("skip_start", mcp.Description("Skip cover card: 0 or 1")),
 		mcp.WithNumber("skip_result", mcp.Description("Skip result card: 0 or 1")),
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 or 1")),
@@ -167,7 +181,9 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 		mcp.WithNumber("display_repeat", mcp.Description("Show play again button: 0 or 1")),
 		mcp.WithNumber("is_searchable", mcp.Description("Searchable Product Finder: match results from the answers' search_query/search_filter. 0 or 1.")),
 		mcp.WithNumber("is_calculator", mcp.Description("Calculator/Product Finder: compute the result from attributes_json cal_formula over per-answer calculator values. 0 or 1.")),
-		mcp.WithNumber("search_results_per_page", mcp.Description("Max results shown for searchable content (recommended 3–5; 0 hides results)")),
+		mcp.WithNumber("search_results_per_page", mcp.Description("Max results shown for searchable content. Range 1-10 (recommended 3-5).")),
+		mcp.WithNumber("boost_results_min_view", mcp.Description("Searchable result boosting: minimum view count a result needs before its performance affects ranking")),
+		mcp.WithNumber("boost_results_ratio", mcp.Description("Searchable result boosting: how strongly result performance affects ranking, 0-100")),
 		mcp.WithNumber("result_loading", mcp.Description("Display loading screen before result: 0 or 1")),
 		mcp.WithString("loading_next_question_label", mcp.Description("Custom loading label between questions")),
 		mcp.WithString("loading_result_label", mcp.Description("Custom loading label before result")),
@@ -192,6 +208,7 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 - canonical (string URL): add a canonical rel tag to the widget page.
 - redirect (string URL): redirect the widget page to this URL.
 - keywords (string): meta keywords for the widget page.`)),
+		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object. See create_content options_json for the field list (design, result_background_blur, share, list_bullet_points, bundle_title, result_button_placement, hide_result_session_id).`)),
 	), tools.UpdateContent(c))
 
 	s.AddTool(mcp.NewTool(
@@ -254,12 +271,22 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 		mcp.WithString("period", mcp.Description("Grouping period: day, week, month, year"), mcp.Required()),
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
-		mcp.WithString("metrics", mcp.Description("Comma-separated metric names: view,vote,voter,start,finish,conversion (defaults to all)")),
+		mcp.WithString("metrics", mcp.Description("Comma-separated metric names (defaults to all): view, vote, voter, start, finish, undo, result_view, result_view_unique, result_click, result_click_unique, result_swipe, result_click_secondary, result_click_compare, result_click_compare_submit, result_click_compare_pdp, conversion, result_click_start_over, result_click_share")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
 	), tools.GetContentMetrics(c))
 
 	s.AddTool(mcp.NewTool(
+		"get_content_stats",
+		mcp.WithDescription("Get aggregate stat totals for a single content item (views, votes, voters, starts, finishes, result clicks, conversion, ...) for a date range. This is the summary shown at the top of the content's stats page; use get_content_metrics for time series."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
+		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
+	), tools.GetContentStats(c))
+
+	s.AddTool(mcp.NewTool(
 		"get_vote_sources",
-		mcp.WithDescription("Get paginated vote sources (referring URLs) for a content item."),
+		mcp.WithDescription("Get paginated vote sources for a content item: one row per referring URL with its vote count (vote-level granularity; see get_session_urls for session-level counts)."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
@@ -291,7 +318,7 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 
 	s.AddTool(mcp.NewTool(
 		"get_session_urls",
-		mcp.WithDescription("Get session URLs grouped by URL with session counts for a content item."),
+		mcp.WithDescription("Get session URLs grouped by URL with session counts for a content item. This powers the dashboard's 'Vote Sources' report — where sessions came from, one row per URL."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
@@ -325,9 +352,12 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
+		mcp.WithString("vertical_mobile_image", mcp.Description("Question image for single-column mobile view")),
+		mcp.WithString("desc", mcp.Description("Question description shown under the title")),
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 (default) or 1. Pair with max_multi_punch_answer to cap selections.")),
 		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 (default) or 1")),
 		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 (default) or 1. Note: passing 1 for quiz and test content ensures each user sees answers in a different order.")),
+		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle all answers except the last one (keeps e.g. 'None of the above' at the bottom): 0 (default) or 1. Mutually exclusive with rotate_answers.")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
 		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
 		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
@@ -351,9 +381,12 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
+		mcp.WithString("vertical_mobile_image", mcp.Description("Question image for single-column mobile view")),
+		mcp.WithString("desc", mcp.Description("Question description shown under the title")),
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 or 1. Pair with max_multi_punch_answer to cap selections.")),
 		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 or 1")),
 		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 or 1. Always pass 1 for quiz and test content so answer order varies per user.")),
+		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle all answers except the last one (keeps e.g. 'None of the above' at the bottom): 0 or 1. Mutually exclusive with rotate_answers.")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
 		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
 		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
@@ -387,6 +420,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content attributes_json gives_feedback): 0 (default) or 1")),
 		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer for a quiz question: 0 (default) or 1")),
 		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this answer deselects all others (e.g. a 'None of the above' option): 0 (default) or 1")),
+		mcp.WithString("cal_val", mcp.Description("Calculator contents only: this answer's calculator value, used by the content's cal_formula. Overrides the question's cal_val_default.")),
 		mcp.WithString("search_query", mcp.Description("Searchable Product Finder only: search-index query run to fetch matching results when this answer is selected.")),
 		mcp.WithString("search_filter", mcp.Description("Searchable Product Finder only: search-index filter applied when this answer is selected, e.g. 'color: [blue]'.")),
 		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question. Lower shows first.")),
@@ -417,6 +451,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("has_right_answer", mcp.Description("Enable right/wrong scoring for this answer (works with content attributes_json gives_feedback): 0 or 1")),
 		mcp.WithNumber("is_right_answer", mcp.Description("Mark this as the correct answer for a quiz question: 0 or 1")),
 		mcp.WithNumber("is_mutually_exclusive", mcp.Description("In a multi-select question, selecting this answer deselects all others (e.g. a 'None of the above' option): 0 or 1")),
+		mcp.WithString("cal_val", mcp.Description("Calculator contents only: this answer's calculator value, used by the content's cal_formula. Overrides the question's cal_val_default.")),
 		mcp.WithString("search_query", mcp.Description("Searchable Product Finder only: search-index query run to fetch matching results when this answer is selected.")),
 		mcp.WithString("search_filter", mcp.Description("Searchable Product Finder only: search-index filter applied when this answer is selected, e.g. 'color: [blue]'.")),
 		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this answer within the question. Lower shows first.")),
@@ -530,7 +565,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"add_question_condition",
-		mcp.WithDescription("Add conditional logic / branching: gate a question on an earlier answer. By default the question is shown only to users who selected the given answer ('only people who voted for'); with condition_reverse it is shown only to users who did NOT select it ('only people who did not vote for'). With no conditions a question is shown to everyone."),
+		mcp.WithDescription("Add conditional logic / branching: gate a question on an earlier answer. By default the question is shown only to users who selected the given answer ('only people who voted for'); with condition_reverse it is shown only to users who did NOT select it ('only people who did not vote for'). With no conditions a question is shown to everyone. Alternative: update_question's conditions/condition_reverse params set all of a question's conditions in one call (that is how the dashboard editor does it)."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("The question whose visibility is being gated"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("An answer from an earlier question that triggers the condition"), mcp.Required()),
@@ -592,7 +627,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"set_question_lead",
-		mcp.WithDescription("Attach a lead form to all answers of a question."),
+		mcp.WithDescription("Attach a lead form to a question (fires when the question is answered, regardless of which answer is picked)."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithNumber("lead_id", mcp.Description("Lead ID to attach"), mcp.Required()),
@@ -600,7 +635,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"remove_question_lead",
-		mcp.WithDescription("Remove the lead form from all answers of a question."),
+		mcp.WithDescription("Remove the lead form from a question."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 	), tools.RemoveQuestionLead(c))
@@ -649,14 +684,17 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		"create_lead",
 		mcp.WithDescription("Create a new lead campaign."),
 		mcp.WithString("name", mcp.Description("Human-readable name for the lead"), mcp.Required()),
-		mcp.WithString("type", mcp.Description("Lead type: redirect, video, image, input, none"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("Lead type: 'input' (collect form fields from the user), 'redirect' (send the user to a URL via a CTA button), 'empty' (display-only: show an image and/or YouTube video with an optional button), 'internal_redirect' (legacy: jump to another Poltio content, redirect_url holds the target Content ID)"), mcp.Required()),
 		mcp.WithString("msg", mcp.Description("Message displayed to the user")),
 		mcp.WithString("fields", mcp.Description("Comma-separated input field names: gsm, email, name, comment")),
 		mcp.WithString("title", mcp.Description("Window title")),
 		mcp.WithString("button_value", mcp.Description("CTA button label")),
-		mcp.WithString("redirect_url", mcp.Description("Redirect URL for redirect-type leads")),
-		mcp.WithString("youtube_id", mcp.Description("YouTube video ID for video-type leads")),
-		mcp.WithString("terms_conditions", mcp.Description("Terms and conditions text")),
+		mcp.WithString("redirect_url", mcp.Description("Redirect URL for redirect-type leads. Special values: '#next' advances to the next question instead of leaving; 'https://poltio.com/widget/{public_id}' opens another Poltio content; for internal_redirect leads this holds the target Content ID.")),
+		mcp.WithString("ios_link", mcp.Description("Redirect URL override for users on iOS devices")),
+		mcp.WithString("android_link", mcp.Description("Redirect URL override for users on Android devices")),
+		mcp.WithString("youtube_id", mcp.Description("YouTube video ID to display inside the lead (typically used with the 'empty' display type)")),
+		mcp.WithString("terms_conditions", mcp.Description("Terms and conditions text (markdown)")),
+		mcp.WithString("terms_conditions2", mcp.Description("Second terms and conditions text (markdown), shown as a separate consent block")),
 		mcp.WithString("image", mcp.Description("Image path for the lead")),
 		mcp.WithNumber("is_active", mcp.Description("Active state: 0 or 1")),
 		mcp.WithNumber("mandatory", mcp.Description("Non-dismissable lead: 0 or 1")),
@@ -664,9 +702,11 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithNumber("tc2_optional", mcp.Description("Second terms and conditions checkbox optional: 0 or 1 (default: 1)")),
 		mcp.WithNumber("auto_open", mcp.Description("Auto-redirect to URL: 0 (default) or 1")),
 		mcp.WithNumber("auto_open_delay", mcp.Description("Auto-redirect delay in milliseconds (default: 2500)")),
-		mcp.WithNumber("open_minimized", mcp.Description("Open lead in minimized state by default: 0 (default) or 1")),
+		mcp.WithNumber("open_minimized", mcp.Description("Open lead in minimized state by default: 0 (default) or 1. Cannot be combined with auto_open.")),
 		mcp.WithNumber("delay", mcp.Description("Delay in milliseconds before loading the lead")),
-		mcp.WithString("link_target", mcp.Description("Link open target: self, parent, or blank")),
+		mcp.WithNumber("stop_set", mcp.Description("Stop the set after this lead's input: 0 (default) or 1. Only works on 'set' contents.")),
+		mcp.WithNumber("dont_shorten", mcp.Description("Don't route the redirect URL through the Poltio short-link/click-tracking service: 0 (default) or 1")),
+		mcp.WithString("link_target", mcp.Description("Link open target: blank, parent, self, or top")),
 		mcp.WithString("tc_short", mcp.Description("Short text for the terms and conditions line")),
 		mcp.WithString("tc2_short", mcp.Description("Short text for the second terms and conditions line")),
 		mcp.WithString("tc_approve_button_label", mcp.Description("Custom button label for the accept section")),
@@ -687,14 +727,17 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithDescription("Update a lead campaign."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Human-readable name")),
-		mcp.WithString("type", mcp.Description("Lead type: redirect, video, image, input, none")),
+		mcp.WithString("type", mcp.Description("Lead type: 'input' (collect form fields), 'redirect' (CTA button to a URL), 'empty' (display-only image/video), 'internal_redirect' (legacy: jump to another Poltio content)")),
 		mcp.WithString("msg", mcp.Description("Message displayed to the user")),
-		mcp.WithString("fields", mcp.Description("Comma-separated input fields")),
+		mcp.WithString("fields", mcp.Description("Comma-separated input field names: gsm, email, name, comment")),
 		mcp.WithString("title", mcp.Description("Window title")),
 		mcp.WithString("button_value", mcp.Description("CTA button label")),
-		mcp.WithString("redirect_url", mcp.Description("Redirect URL")),
-		mcp.WithString("youtube_id", mcp.Description("YouTube video ID for video-type leads")),
-		mcp.WithString("terms_conditions", mcp.Description("Terms and conditions text")),
+		mcp.WithString("redirect_url", mcp.Description("Redirect URL. Special values: '#next' advances to the next question; 'https://poltio.com/widget/{public_id}' opens another Poltio content; for internal_redirect leads this holds the target Content ID.")),
+		mcp.WithString("ios_link", mcp.Description("Redirect URL override for users on iOS devices")),
+		mcp.WithString("android_link", mcp.Description("Redirect URL override for users on Android devices")),
+		mcp.WithString("youtube_id", mcp.Description("YouTube video ID to display inside the lead (typically used with the 'empty' display type)")),
+		mcp.WithString("terms_conditions", mcp.Description("Terms and conditions text (markdown)")),
+		mcp.WithString("terms_conditions2", mcp.Description("Second terms and conditions text (markdown), shown as a separate consent block")),
 		mcp.WithString("image", mcp.Description("Image path for the lead")),
 		mcp.WithNumber("is_active", mcp.Description("Active state: 0 or 1")),
 		mcp.WithNumber("mandatory", mcp.Description("Non-dismissable: 0 or 1")),
@@ -702,9 +745,11 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithNumber("tc2_optional", mcp.Description("Second terms and conditions checkbox optional: 0 or 1")),
 		mcp.WithNumber("auto_open", mcp.Description("Auto-redirect to URL: 0 or 1")),
 		mcp.WithNumber("auto_open_delay", mcp.Description("Auto-redirect delay in milliseconds")),
-		mcp.WithNumber("open_minimized", mcp.Description("Open lead in minimized state by default: 0 or 1")),
+		mcp.WithNumber("open_minimized", mcp.Description("Open lead in minimized state by default: 0 or 1. Cannot be combined with auto_open.")),
 		mcp.WithNumber("delay", mcp.Description("Delay in milliseconds before loading the lead")),
-		mcp.WithString("link_target", mcp.Description("Link open target: self, parent, or blank")),
+		mcp.WithNumber("stop_set", mcp.Description("Stop the set after this lead's input: 0 or 1. Only works on 'set' contents.")),
+		mcp.WithNumber("dont_shorten", mcp.Description("Don't route the redirect URL through the Poltio short-link/click-tracking service: 0 or 1")),
+		mcp.WithString("link_target", mcp.Description("Link open target: blank, parent, self, or top")),
 		mcp.WithString("tc_short", mcp.Description("Short text for the terms and conditions line")),
 		mcp.WithString("tc2_short", mcp.Description("Short text for the second terms and conditions line")),
 		mcp.WithString("tc_approve_button_label", mcp.Description("Custom button label for the accept section")),
@@ -722,7 +767,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_inputs",
-		mcp.WithDescription("Get paginated user inputs submitted through a lead form."),
+		mcp.WithDescription("Get paginated user submissions collected through a lead form. Each row holds the submitted field values (name, email, phone/gsm, comment) plus session context such as play time, correct-answer count, and calculator score."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
@@ -730,7 +775,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_logs",
-		mcp.WithDescription("Get paginated activation logs for a lead campaign."),
+		mcp.WithDescription("Get paginated activation logs for a lead campaign — when and on which content the lead fired (time, lead id, content type, content id)."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
@@ -738,7 +783,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 
 	s.AddTool(mcp.NewTool(
 		"get_lead_codes",
-		mcp.WithDescription("Get paginated coupon codes for a lead campaign."),
+		mcp.WithDescription("Get paginated coupon codes for a lead campaign. Each code includes redemption state: is_used, single_use, session_id, and used_at."),
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page")),
@@ -906,15 +951,22 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"create_theme",
 		mcp.WithDescription("Create a new theme. Call get_default_theme first to discover available fields, then pass overrides as fields_json."),
 		mcp.WithString("name", mcp.Description("Internal name for the theme"), mcp.Required()),
-		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to set (colors, fonts, etc.)")),
+		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to set (colors, fonts, radii, per-section styles like cover_*, question_*, result_*, gtm_id). Color values must be RGB like 'rgb(255, 0, 0)' or 'r,g,b' as returned by get_default_theme — not hex.")),
 	), tools.CreateTheme(c))
 
 	s.AddTool(mcp.NewTool(
 		"update_theme",
 		mcp.WithDescription("Update an existing theme's fields."),
 		mcp.WithNumber("theme_id", mcp.Description("Theme ID"), mcp.Required()),
-		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to update"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("New internal name for the theme")),
+		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to update. Color values must be RGB (as returned by get_theme), not hex."), mcp.Required()),
 	), tools.UpdateTheme(c))
+
+	s.AddTool(mcp.NewTool(
+		"find_theme",
+		mcp.WithDescription("Auto-extract a theme (colors, fonts) from an existing web page URL — useful to match the widget's look to a customer's site. Returns suggested theme fields; save them with create_theme."),
+		mcp.WithString("url", mcp.Description("Web page URL to extract theme styles from"), mcp.Required()),
+	), tools.FindTheme(c))
 
 	s.AddTool(mcp.NewTool(
 		"delete_theme",
@@ -942,8 +994,17 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("period", mcp.Description("Grouping period: day, week, month, year"), mcp.Required()),
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
-		mcp.WithString("metrics", mcp.Description("Comma-separated metric names (defaults to all)")),
+		mcp.WithString("metrics", mcp.Description("Comma-separated metric names (defaults to all): view, vote, voter, start, finish, undo, result_view, result_view_unique, result_click, result_click_unique, result_swipe, result_click_secondary, result_click_compare, result_click_compare_submit, result_click_compare_pdp, conversion, result_click_start_over, result_click_share")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
 	), tools.GetDashboardMetrics(c))
+
+	s.AddTool(mcp.NewTool(
+		"get_dashboard_stats",
+		mcp.WithDescription("Get account-wide aggregate stat totals (views, votes, voters, starts, finishes, result clicks, conversion, ...) for a date range. This is the summary the dashboard's stat cards show; use get_dashboard_metrics for time series."),
+		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
+		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
+	), tools.GetDashboardStats(c))
 
 	// ── Sheet Hooks ───────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1009,12 +1070,12 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("public_id", mcp.Description("Content public_id (omit for account-wide hooks)")),
 		mcp.WithString("name", mcp.Description("Internal name")),
 		mcp.WithNumber("is_active", mcp.Description("Active state: 0 or 1 (default: 1)")),
-		mcp.WithNumber("delay", mcp.Description("Delay in seconds before firing")),
-		mcp.WithNumber("send_leads", mcp.Description("Include lead data: 0 or 1")),
-		mcp.WithNumber("send_answers", mcp.Description("Include answer data: 0 (default) or 1")),
-		mcp.WithNumber("account_wide", mcp.Description("Fire for all content in account: 0 (default) or 1")),
+		mcp.WithNumber("delay", mcp.Description("Delay in seconds before firing (dashboard default: 10)")),
+		mcp.WithNumber("send_leads", mcp.Description("Include lead data: 0 or 1 (dashboard default: 1)")),
+		mcp.WithNumber("send_answers", mcp.Description("Include answer data: 0 or 1 (dashboard default: 1)")),
+		mcp.WithNumber("account_wide", mcp.Description("Fire for all content in account: 0 (default) or 1. At most 2 account-wide webhooks are allowed.")),
 		mcp.WithNumber("incomplete_send", mcp.Description("Fire for incomplete sessions: 0 (default) or 1")),
-		mcp.WithNumber("incomplete_delay", mcp.Description("Seconds from session start to trigger incomplete webhook")),
+		mcp.WithNumber("incomplete_delay", mcp.Description("Seconds from session start to trigger incomplete webhook. Must be at least 60 and not less than delay (dashboard default: 60).")),
 		mcp.WithNumber("use_oauth", mcp.Description("Enable OAuth authentication for webhook: 0 or 1")),
 		mcp.WithString("oauth_login_endpoint", mcp.Description("OAuth token API endpoint (required with use_oauth)")),
 		mcp.WithString("oauth_request_body_json", mcp.Description("Additional OAuth request body fields as JSON")),
@@ -1068,7 +1129,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
-		mcp.WithNumber("download", mcp.Description("Request report as a file via email: 0 or 1 (default: 1)")),
+		mcp.WithNumber("download", mcp.Description("Pass 1 to request the report as a downloadable file instead of inline data. Omit for normal paginated results.")),
 	), tools.GetVoters(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1077,6 +1138,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("content_id", mcp.Description("Filter to a specific content item by its integer ID (optional)")),
 		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD)")),
 		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
 	), tools.GetConversionTimeStats(c))
 
 	// ── Reports ───────────────────────────────────────────────────────────────
@@ -1090,9 +1152,10 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 	s.AddTool(mcp.NewTool(
 		"create_report",
 		mcp.WithDescription("Request a new downloadable report (sent to your account email)."),
-		mcp.WithString("report", mcp.Description("Report type: content-sessions or content-voters"), mcp.Required()),
-		mcp.WithString("public_id", mcp.Description("Content public_id for content-scoped reports")),
-		mcp.WithNumber("base_id", mcp.Description("Base ID (required when no public_id is given)")),
+		mcp.WithString("report", mcp.Description("Report type: content-sessions or content-voters (pass public_id), voter-leads (pass base_id = the lead ID), answer-voters (pass target_ids = answer IDs)"), mcp.Required()),
+		mcp.WithString("public_id", mcp.Description("Content public_id for content-scoped reports (content-sessions, content-voters)")),
+		mcp.WithNumber("base_id", mcp.Description("Base entity ID, e.g. the lead ID for voter-leads reports")),
+		mcp.WithString("target_ids", mcp.Description("Comma-separated answer IDs for answer-voters reports")),
 	), tools.CreateReport(c))
 
 	// ── Data Sources ──────────────────────────────────────────────────────────
@@ -1146,9 +1209,8 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"update_domain",
-		mcp.WithDescription("Update a custom domain's settings."),
+		mcp.WithDescription("Update a custom domain's settings. The domain name itself cannot be changed after creation — delete and re-create instead."),
 		mcp.WithNumber("domain_id", mcp.Description("Domain ID"), mcp.Required()),
-		mcp.WithString("domain", mcp.Description("New domain value")),
 		mcp.WithNumber("is_default", mcp.Description("Set as default: 0 or 1")),
 		mcp.WithNumber("is_active", mcp.Description("Enable/disable: 0 or 1")),
 	), tools.UpdateDomain(c))
@@ -1173,9 +1235,12 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Create a Dynamic Widget: a placement rule that auto-loads a chosen content item on your site through the Poltio embed snippet, either on every page or only on specific page URLs. Lets you swap which content shows where without editing your site code."),
 		mcp.WithString("public_id", mcp.Description("Public ID of the content this widget displays"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Internal name for the widget")),
-		mcp.WithNumber("is_default", mcp.Description("Make this the default widget shown on pages with no more specific match: 0 or 1")),
+		mcp.WithNumber("is_default", mcp.Description("Make this the default widget shown on every page with the snippet: 0 or 1. When 1, omit urls.")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). Leave empty to show on all pages (For All Pages).")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). For all pages, pass is_default=1 instead.")),
+		mcp.WithString("starts_at", mcp.Description("Schedule start: only show the widget from this moment, format 'YYYY-MM-DD HH:MM:SS'")),
+		mcp.WithString("ends_at", mcp.Description("Schedule end: stop showing the widget after this moment, format 'YYYY-MM-DD HH:MM:SS'")),
+		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Read an existing widget with get_widget to see the shape before setting this.")),
 	), tools.CreateWidget(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1190,9 +1255,12 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
 		mcp.WithString("public_id", mcp.Description("Content public identifier")),
 		mcp.WithString("name", mcp.Description("Widget name")),
-		mcp.WithNumber("is_default", mcp.Description("Set as default widget: 0 or 1")),
+		mcp.WithNumber("is_default", mcp.Description("Set as default widget shown on every page: 0 or 1. When 1, omit urls.")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). Leave empty to show on all pages (For All Pages).")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). For all pages, pass is_default=1 instead.")),
+		mcp.WithString("starts_at", mcp.Description("Schedule start: only show the widget from this moment, format 'YYYY-MM-DD HH:MM:SS'")),
+		mcp.WithString("ends_at", mcp.Description("Schedule end: stop showing the widget after this moment, format 'YYYY-MM-DD HH:MM:SS'")),
+		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Read the widget with get_widget first and send back the modified object.")),
 	), tools.UpdateWidget(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1259,7 +1327,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 	s.AddTool(mcp.NewTool(
 		"create_conversion_setting",
 		mcp.WithDescription("Register a checkout/order-success page URL so Poltio can count it as a conversion when reached by users who engaged with a widget. Add the same success page your site shows after a purchase or sign-up."),
-		mcp.WithString("url", mcp.Description("The checkout/order-success page URL on your site, e.g. https://shop.example.com/order/complete"), mcp.Required()),
+		mcp.WithString("url", mcp.Description("The checkout/order-success page URL on your site, e.g. https://shop.example.com/order/complete. Use ^ as a wildcard matching any single path segment, e.g. https://shop.example.com/^/order/^; without ^ the URL must match exactly."), mcp.Required()),
 		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only count visits attributable to a prior widget interaction. Default: 1.")),
 	), tools.CreateConversionSetting(c))
 
@@ -1267,7 +1335,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"update_conversion_setting",
 		mcp.WithDescription("Update a registered conversion success URL."),
 		mcp.WithNumber("conversion_setting_id", mcp.Description("Conversion setting ID"), mcp.Required()),
-		mcp.WithString("url", mcp.Description("New checkout/order-success page URL, e.g. https://shop.example.com/order/complete")),
+		mcp.WithString("url", mcp.Description("New checkout/order-success page URL, e.g. https://shop.example.com/order/complete. Use ^ as a wildcard matching any single path segment.")),
 		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only those attributable to a widget interaction.")),
 	), tools.UpdateConversionSetting(c))
 
@@ -1307,7 +1375,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Invite a new member to an organization via email."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithString("email", mcp.Description("Email address of the user to invite"), mcp.Required()),
-		mcp.WithString("role", mcp.Description("Role to assign: admin, user, or viewer"), mcp.Required()),
+		mcp.WithString("role", mcp.Description("Role to assign: admin, user, or viewer. (The 'owner' role exists but cannot be assigned.)"), mcp.Required()),
 	), tools.InviteOrgMember(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1342,7 +1410,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Update a member's role in an organization."),
 		mcp.WithNumber("organization_id", mcp.Description("Organization ID"), mcp.Required()),
 		mcp.WithNumber("user_id", mcp.Description("User ID of the member"), mcp.Required()),
-		mcp.WithString("role", mcp.Description("New role: admin, user, or viewer"), mcp.Required()),
+		mcp.WithString("role", mcp.Description("New role: admin, user, or viewer. (The 'owner' role exists but cannot be assigned.)"), mcp.Required()),
 	), tools.UpdateOrgMember(c))
 
 	s.AddTool(mcp.NewTool(
@@ -1411,6 +1479,11 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("tier_id", mcp.Description("Subscription tier ID (from list_subscription_tiers)"), mcp.Required()),
 		mcp.WithString("period", mcp.Description("Billing period: month or year"), mcp.Required()),
 	), tools.CreateSubscription(c))
+
+	s.AddTool(mcp.NewTool(
+		"cancel_subscription",
+		mcp.WithDescription("Cancel the current organization's subscription. This is a billing-affecting action — only call it when the user explicitly asks to cancel."),
+	), tools.CancelSubscription(c))
 
 	if port != "" {
 		httpServer := server.NewStreamableHTTPServer(

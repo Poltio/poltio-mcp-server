@@ -64,9 +64,32 @@ func GetDashboardMetrics(c ContentClient) func(context.Context, mcp.CallToolRequ
 				body["metrics"] = trimmed
 			}
 		}
+		if v := req.GetString("device_type", ""); v != "" {
+			body["device_type"] = v
+		}
 		data, err := c.Post("/platform/dashboard/metrics/"+period, body)
 		if err != nil {
 			return nil, fmt.Errorf("get_dashboard_metrics: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetDashboardStats(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		q := url.Values{}
+		if v := req.GetString("start", ""); v != "" {
+			q.Set("start", v)
+		}
+		if v := req.GetString("end", ""); v != "" {
+			q.Set("end", v)
+		}
+		if v := req.GetString("device_type", ""); v != "" {
+			q.Set("device_type", v)
+		}
+		data, err := c.Get("/platform/dashboard/stats", q)
+		if err != nil {
+			return nil, fmt.Errorf("get_dashboard_stats: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}

@@ -35,7 +35,7 @@ func CreateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		leadType, err := req.RequireString("type")
 		if err != nil || leadType == "" {
-			return nil, fmt.Errorf("type is required (redirect, video, image, input, none)")
+			return nil, fmt.Errorf("type is required (input, redirect, empty, internal_redirect)")
 		}
 		body := map[string]any{"name": name, "type": leadType}
 		if v := req.GetString("msg", ""); v != "" {
@@ -58,6 +58,15 @@ func CreateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		if v := req.GetString("terms_conditions", ""); v != "" {
 			body["terms_conditions"] = v
+		}
+		if v := req.GetString("terms_conditions2", ""); v != "" {
+			body["terms_conditions2"] = v
+		}
+		if v := req.GetString("ios_link", ""); v != "" {
+			body["ios_link"] = v
+		}
+		if v := req.GetString("android_link", ""); v != "" {
+			body["android_link"] = v
 		}
 		if v := req.GetInt("is_active", -1); v >= 0 {
 			body["is_active"] = v
@@ -85,6 +94,12 @@ func CreateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		if v := req.GetInt("delay", -1); v >= 0 {
 			body["delay"] = v
+		}
+		if v := req.GetInt("stop_set", -1); v >= 0 {
+			body["stop_set"] = v
+		}
+		if v := req.GetInt("dont_shorten", -1); v >= 0 {
+			body["dont_shorten"] = v
 		}
 		if v := req.GetString("link_target", ""); v != "" {
 			body["link_target"] = v
@@ -169,6 +184,15 @@ func UpdateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		if v := req.GetString("terms_conditions", ""); v != "" {
 			body["terms_conditions"] = v
 		}
+		if v := req.GetString("terms_conditions2", ""); v != "" {
+			body["terms_conditions2"] = v
+		}
+		if v := req.GetString("ios_link", ""); v != "" {
+			body["ios_link"] = v
+		}
+		if v := req.GetString("android_link", ""); v != "" {
+			body["android_link"] = v
+		}
 		if v := req.GetInt("is_active", -1); v >= 0 {
 			body["is_active"] = v
 		}
@@ -195,6 +219,12 @@ func UpdateLead(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		if v := req.GetInt("delay", -1); v >= 0 {
 			body["delay"] = v
+		}
+		if v := req.GetInt("stop_set", -1); v >= 0 {
+			body["stop_set"] = v
+		}
+		if v := req.GetInt("dont_shorten", -1); v >= 0 {
+			body["dont_shorten"] = v
 		}
 		if v := req.GetString("link_target", ""); v != "" {
 			body["link_target"] = v

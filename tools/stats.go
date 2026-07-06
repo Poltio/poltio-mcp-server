@@ -27,8 +27,8 @@ func GetVoters(c StatsClient) func(context.Context, mcp.CallToolRequest) (*mcp.C
 		if perPage := req.GetInt("per_page", 0); perPage > 0 {
 			q.Set("per_page", strconv.Itoa(perPage))
 		}
-		if v := req.GetInt("download", -1); v >= 0 {
-			q.Set("download", strconv.Itoa(v))
+		if v := req.GetInt("download", 0); v == 1 {
+			q.Set("download", "1")
 		}
 		data, err := c.Get("/platform/content/"+publicID+"/voters", q)
 		if err != nil {
@@ -50,9 +50,36 @@ func GetConversionTimeStats(c StatsClient) func(context.Context, mcp.CallToolReq
 		if v := req.GetString("end", ""); v != "" {
 			q.Set("end", v)
 		}
+		if v := req.GetString("device_type", ""); v != "" {
+			q.Set("device_type", v)
+		}
 		data, err := c.Get("/platform/conversion/time-stats", q)
 		if err != nil {
 			return nil, fmt.Errorf("get_conversion_time_stats: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetContentStats(c StatsClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		publicID, err := req.RequireString("public_id")
+		if err != nil || publicID == "" {
+			return nil, fmt.Errorf("public_id is required")
+		}
+		q := url.Values{}
+		if v := req.GetString("start", ""); v != "" {
+			q.Set("start", v)
+		}
+		if v := req.GetString("end", ""); v != "" {
+			q.Set("end", v)
+		}
+		if v := req.GetString("device_type", ""); v != "" {
+			q.Set("device_type", v)
+		}
+		data, err := c.Get("/platform/content/"+publicID+"/stats", q)
+		if err != nil {
+			return nil, fmt.Errorf("get_content_stats: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
