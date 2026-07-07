@@ -38,3 +38,13 @@ func CreateSubscription(c ContentClient) func(context.Context, mcp.CallToolReque
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
+
+func CancelSubscription(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		data, err := c.Delete("/platform/subscription")
+		if err != nil {
+			return nil, fmt.Errorf("cancel_subscription: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}

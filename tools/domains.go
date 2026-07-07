@@ -46,9 +46,6 @@ func UpdateDomain(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 			return nil, fmt.Errorf("domain_id is required")
 		}
 		body := map[string]any{}
-		if v := req.GetString("domain", ""); v != "" {
-			body["domain"] = v
-		}
 		if v := req.GetInt("is_default", -1); v >= 0 {
 			body["is_default"] = v == 1
 		}

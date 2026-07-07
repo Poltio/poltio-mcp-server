@@ -161,7 +161,7 @@ func CreateWebhook(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if err != nil || webhookURL == "" {
 			return nil, fmt.Errorf("url is required")
 		}
-		body := map[string]any{"url": webhookURL, "is_active": true}
+		body := map[string]any{"url": webhookURL, "is_active": req.GetInt("is_active", 1) == 1}
 		if v := req.GetString("public_id", ""); v != "" {
 			body["public_id"] = v
 		}

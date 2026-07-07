@@ -113,6 +113,12 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetString("embed_footer_url", ""); v != "" {
 			body["embed_footer_url"] = v
 		}
+		if v := req.GetString("embed_background", ""); v != "" {
+			body["embed_background"] = v
+		}
+		if v := req.GetString("theme_id", ""); v != "" {
+			body["theme_id"] = v
+		}
 		if v := req.GetInt("is_searchable", -1); v >= 0 {
 			body["is_searchable"] = v
 		}
@@ -121,6 +127,12 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetInt("search_results_per_page", -1); v >= 0 {
 			body["search_results_per_page"] = v
+		}
+		if v := req.GetInt("boost_results_min_view", -1); v >= 0 {
+			body["boost_results_min_view"] = v
+		}
+		if v := req.GetInt("boost_results_ratio", -1); v >= 0 {
+			body["boost_results_ratio"] = v
 		}
 		if v := req.GetInt("result_loading", -1); v >= 0 {
 			body["result_loading"] = v
@@ -163,6 +175,13 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 			if err := json.Unmarshal([]byte(v), &attrs); err == nil {
 				body["attributes"] = attrs
 			}
+		}
+		if v := req.GetString("options_json", ""); v != "" {
+			var opts map[string]any
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
+			}
+			body["options"] = opts
 		}
 		data, err := c.Post("/platform/content", body)
 		if err != nil {
@@ -264,6 +283,12 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetString("embed_footer_url", ""); v != "" {
 			body["embed_footer_url"] = v
 		}
+		if v := req.GetString("embed_background", ""); v != "" {
+			body["embed_background"] = v
+		}
+		if v := req.GetString("theme_id", ""); v != "" {
+			body["theme_id"] = v
+		}
 		if v := req.GetInt("is_searchable", -1); v >= 0 {
 			body["is_searchable"] = v
 		}
@@ -272,6 +297,12 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetInt("search_results_per_page", -1); v >= 0 {
 			body["search_results_per_page"] = v
+		}
+		if v := req.GetInt("boost_results_min_view", -1); v >= 0 {
+			body["boost_results_min_view"] = v
+		}
+		if v := req.GetInt("boost_results_ratio", -1); v >= 0 {
+			body["boost_results_ratio"] = v
 		}
 		if v := req.GetInt("result_loading", -1); v >= 0 {
 			body["result_loading"] = v
@@ -314,6 +345,13 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 			if err := json.Unmarshal([]byte(v), &attrs); err == nil {
 				body["attributes"] = attrs
 			}
+		}
+		if v := req.GetString("options_json", ""); v != "" {
+			var opts map[string]any
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
+			}
+			body["options"] = opts
 		}
 		data, err := c.Put("/platform/content/"+publicID, body)
 		if err != nil {
@@ -586,6 +624,9 @@ func GetContentMetrics(c ContentClient) func(context.Context, mcp.CallToolReques
 			if len(trimmed) > 0 {
 				body["metrics"] = trimmed
 			}
+		}
+		if v := req.GetString("device_type", ""); v != "" {
+			body["device_type"] = v
 		}
 		data, err := c.Post("/platform/content/"+publicID+"/metrics/"+period, body)
 		if err != nil {

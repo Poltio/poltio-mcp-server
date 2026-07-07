@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const defaultBaseURL = "https://api-stage.poltio.com"
+const defaultBaseURL = "https://api.poltio.com"
 
 type PoltioClient struct {
 	baseURL    string
@@ -157,6 +157,33 @@ func (c *PoltioClient) PostFormMultipart(path string, fields map[string]string) 
 		if err := w.WriteField(k, v); err != nil {
 			return nil, err
 		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	c.setHeaders(req)
+	return c.do(req)
+}
+
+func (c *PoltioClient) PostFormFileFields(path, fieldName, filename string, content []byte, fields map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			return nil, err
+		}
+	}
+	fw, err := w.CreateFormFile(fieldName, filename)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fw.Write(content); err != nil {
+		return nil, err
 	}
 	if err := w.Close(); err != nil {
 		return nil, err

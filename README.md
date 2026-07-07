@@ -108,6 +108,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_content_results` | Get paginated vote results (per-answer counts) |
 | `get_content_sessions` | Get paginated user sessions |
 | `get_content_metrics` | Get time-series metrics grouped by day/week/month/year |
+| `get_content_stats` | Get aggregate stat totals for a content item for a date range (device-filterable) |
 | `get_vote_sources` | Get paginated vote sources (referring URLs) for a content item |
 | `get_sankey` | Get Sankey diagram data showing user flow through a content item |
 | `get_sankey_users` | Get users who took a specific path in the Sankey diagram |
@@ -209,6 +210,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_theme` | Get a single theme by ID |
 | `create_theme` | Create a new theme (call `get_default_theme` first to discover available fields) |
 | `update_theme` | Update an existing theme's fields |
+| `find_theme` | Auto-extract a theme (colors, fonts) from an existing web page URL |
 | `delete_theme` | Delete a theme (fails if the theme is currently in use) |
 
 **Dashboard**
@@ -218,6 +220,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_dashboard` | Get account dashboard data including recent content and aggregate counters |
 | `get_dashboard_summary` | Get most recently active content stat summary |
 | `get_dashboard_metrics` | Get account-wide time-series metrics grouped by period |
+| `get_dashboard_stats` | Get account-wide aggregate stat totals for a date range (device-filterable) |
 
 **Sheet Hooks**
 
@@ -331,6 +334,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 |---|---|
 | `list_subscription_tiers` | List available subscription tiers and their features |
 | `create_subscription` | Create a new subscription for the current organization |
+| `cancel_subscription` | Cancel the current organization's subscription |
 
 **Utilities**
 

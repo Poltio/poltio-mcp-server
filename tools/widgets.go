@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -48,15 +49,28 @@ func CreateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetString("urls", ""); v != "" {
 			parts := strings.Split(v, ",")
-			filtered := make([]string, 0, len(parts))
+			filtered := make([]map[string]any, 0, len(parts))
 			for _, p := range parts {
 				if s := strings.TrimSpace(p); s != "" {
-					filtered = append(filtered, s)
+					filtered = append(filtered, map[string]any{"url": s})
 				}
 			}
 			if len(filtered) > 0 {
 				body["urls"] = filtered
 			}
+		}
+		if v := req.GetString("starts_at", ""); v != "" {
+			body["starts_at"] = v
+		}
+		if v := req.GetString("ends_at", ""); v != "" {
+			body["ends_at"] = v
+		}
+		if v := req.GetString("overlay_options_json", ""); v != "" {
+			var opts map[string]any
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("overlay_options_json must be valid JSON: %w", err)
+			}
+			body["overlay_options"] = opts
 		}
 		data, err := c.Post("/platform/widgets", body)
 		if err != nil {
@@ -101,15 +115,28 @@ func UpdateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		}
 		if v := req.GetString("urls", ""); v != "" {
 			parts := strings.Split(v, ",")
-			filtered := make([]string, 0, len(parts))
+			filtered := make([]map[string]any, 0, len(parts))
 			for _, p := range parts {
 				if s := strings.TrimSpace(p); s != "" {
-					filtered = append(filtered, s)
+					filtered = append(filtered, map[string]any{"url": s})
 				}
 			}
 			if len(filtered) > 0 {
 				body["urls"] = filtered
 			}
+		}
+		if v := req.GetString("starts_at", ""); v != "" {
+			body["starts_at"] = v
+		}
+		if v := req.GetString("ends_at", ""); v != "" {
+			body["ends_at"] = v
+		}
+		if v := req.GetString("overlay_options_json", ""); v != "" {
+			var opts map[string]any
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("overlay_options_json must be valid JSON: %w", err)
+			}
+			body["overlay_options"] = opts
 		}
 		data, err := c.Put("/platform/widgets/"+strconv.Itoa(widgetID), body)
 		if err != nil {
