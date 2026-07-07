@@ -308,8 +308,8 @@ func TestUploadImage_InvalidBase64(t *testing.T) {
 }
 
 func TestUploadImage_TooLarge(t *testing.T) {
-	// 5 MB + 1 byte of zeros, base64 encoded.
-	large := base64.StdEncoding.EncodeToString(make([]byte, 5*1024*1024+1))
+	// 2 MiB + 1 byte of zeros, base64 encoded — one past the size limit.
+	large := base64.StdEncoding.EncodeToString(make([]byte, 2*1024*1024+1))
 	mock := &mockUploadClient{}
 	handler := tools.UploadImage(mock)
 	_, err := handler(context.Background(), callUploadRequest(map[string]any{

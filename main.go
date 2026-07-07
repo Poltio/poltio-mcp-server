@@ -327,10 +327,10 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"upload_image",
-		mcp.WithDescription("Upload an image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. Provide the image with EXACTLY ONE of image_path, image_url, or image_base64. PREFER image_path or image_url: the server reads the bytes itself, so the image never passes through the conversation — base64 is slow and fails for larger images because the whole payload has to be generated as the tool argument. Images must be <= 5 MB and one of the supported formats: png, jpg, jpeg, gif, webp. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
+		mcp.WithDescription("Upload an image to Poltio. Returns a file path to use as the background field in content, questions, answers, or results. Provide the image with EXACTLY ONE of image_path, image_url, or image_base64. PREFER image_path or image_url: the server reads the bytes itself, so the image never passes through the conversation — base64 is slow and fails for larger images because the whole payload has to be generated as the tool argument. Images must not exceed 2 MiB and be one of the supported formats: png, jpg, jpeg, gif, webp. IMPORTANT: when creating images for quiz or test questions, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer."),
 		mcp.WithString("image_path", mcp.Description("Preferred. Local filesystem path to the image file; the server reads it directly. Use this whenever the image exists on disk where the server runs (e.g. a saved or generated file).")),
 		mcp.WithString("image_url", mcp.Description("An http(s) URL to the image; the server fetches it directly. Use this for remotely hosted images instead of downloading and re-encoding them.")),
-		mcp.WithString("image_base64", mcp.Description("Fallback for when you only have raw bytes. Base64-encoded image data, either a raw base64 string or a data URI such as data:image/png;base64,.... Avoid for large images — the entire payload must be emitted as the tool argument, which is slow and can fail.")),
+		mcp.WithString("image_base64", mcp.Description("Fallback for when you only have raw bytes. Base64-encoded image data, either a raw base64 string or a data URI such as data:image/png;base64,.... The decoded image must not exceed 2 MiB. Avoid for large images — the entire payload must be emitted as the tool argument, which is slow and can fail.")),
 		mcp.WithString("ext", mcp.Description("Optional file extension without the dot: png, jpg, jpeg, gif, webp. If omitted, it is derived from the image content.")),
 	), tools.UploadImage(c))
 
@@ -1177,7 +1177,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"create_csv_data_source",
 		mcp.WithDescription("Create a data source from a CSV file in one step (multipart upload, as the dashboard does). The record is created as type 'csv' so its columns can be inspected with get_data_source_attributes and mapped with set_data_source_elements, then imported with publish_data_source."),
 		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
-		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content"), mcp.Required()),
+		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename, defaults to data.csv")),
 	), tools.CreateCSVDataSource(c))
 
@@ -1238,7 +1238,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 	s.AddTool(mcp.NewTool(
 		"upload_data_source",
 		mcp.WithDescription("Upload a file (JSON, XML, CSV, or TXT) as a new data source."),
-		mcp.WithString("file_base64", mcp.Description("Base64-encoded file content"), mcp.Required()),
+		mcp.WithString("file_base64", mcp.Description("Base64-encoded file content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename with extension, e.g. feed.json, data.csv"), mcp.Required()),
 	), tools.UploadDataSource(c))
 

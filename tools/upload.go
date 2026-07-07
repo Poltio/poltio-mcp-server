@@ -15,7 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-const maxImageSizeBytes = 5 * 1024 * 1024
+const maxImageSizeBytes = 2 * 1024 * 1024
 
 var allowedImageExts = map[string]bool{
 	"png":  true,
@@ -92,7 +92,7 @@ func loadFromFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot read image_path %q: %w", path, err)
 	}
 	if len(b) > maxImageSizeBytes {
-		return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
+		return nil, fmt.Errorf("image exceeds maximum allowed size of 2 MiB")
 	}
 	return b, nil
 }
@@ -127,7 +127,7 @@ func loadFromURL(ctx context.Context, urlStr string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot read image_url: %w", err)
 	}
 	if len(b) > maxImageSizeBytes {
-		return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
+		return nil, fmt.Errorf("image exceeds maximum allowed size of 2 MiB")
 	}
 	return b, nil
 }
@@ -158,7 +158,7 @@ func decodeBase64Image(f string) ([]byte, error) {
 		return nil, fmt.Errorf("image_base64 is empty")
 	}
 	if base64.StdEncoding.DecodedLen(len(raw)) > maxImageSizeBytes {
-		return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
+		return nil, fmt.Errorf("image exceeds maximum allowed size of 2 MiB")
 	}
 	decoded, err := base64.StdEncoding.Strict().DecodeString(raw)
 	if err != nil {
@@ -181,7 +181,7 @@ func decodeBase64Image(f string) ([]byte, error) {
 // The storage bucket is chosen by the API server, not the caller.
 //
 // API limits enforced here:
-//   - decoded image must be <= 5 MB
+//   - decoded image must be <= 2 MiB
 //   - content must sniff as png, jpeg, gif, or webp
 //   - ext, if given, must be png, jpg, jpeg, gif, or webp; otherwise it is
 //     derived from the sniffed content
@@ -227,7 +227,7 @@ func UploadImage(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mc
 		// File/URL sources are size-checked while loading; base64 via its
 		// DecodedLen pre-flight. This is the final backstop for all sources.
 		if len(decoded) > maxImageSizeBytes {
-			return nil, fmt.Errorf("image exceeds maximum allowed size of 5 MB")
+			return nil, fmt.Errorf("image exceeds maximum allowed size of 2 MiB")
 		}
 
 		// Verify the bytes are actually a supported image. The backend derives
