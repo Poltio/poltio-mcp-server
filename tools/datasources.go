@@ -1,12 +1,19 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -83,6 +90,137 @@ func CreateCSVDataSource(c UploadClient) func(context.Context, mcp.CallToolReque
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
+}
+
+// CreateXMLDataSource fetches a remote XML feed, flattens its items to CSV and
+// creates the data source through the working CSV pipeline. This exists because
+// the platform API cannot set items_path on xml-type sources, so a native xml
+// source always imports 0 items.
+// ponytail: snapshot import, no auto-sync from the feed; refresh = delete + recreate.
+func CreateXMLDataSource(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		name, err := req.RequireString("name")
+		if err != nil || name == "" {
+			return nil, fmt.Errorf("name is required")
+		}
+		feedURL, err := req.RequireString("feed_url")
+		if err != nil || feedURL == "" {
+			return nil, fmt.Errorf("feed_url is required")
+		}
+		itemsPath, err := req.RequireString("items_path")
+		if err != nil || itemsPath == "" {
+			return nil, fmt.Errorf("items_path is required (item node name, e.g. item, product, entry)")
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create_xml_data_source: invalid feed_url: %w", err)
+		}
+		httpReq.Header.Set("User-Agent", "PoltioMCP")
+		resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("create_xml_data_source: fetching feed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("create_xml_data_source: feed returned HTTP %d", resp.StatusCode)
+		}
+
+		headers, rows, err := xmlItemsToRows(resp.Body, itemsPath)
+		if err != nil {
+			return nil, fmt.Errorf("create_xml_data_source: parsing feed: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil, fmt.Errorf("create_xml_data_source: no <%s> items found in feed; check items_path", itemsPath)
+		}
+
+		var buf bytes.Buffer
+		w := csv.NewWriter(&buf)
+		_ = w.Write(headers)
+		for _, row := range rows {
+			rec := make([]string, len(headers))
+			for i, h := range headers {
+				rec[i] = row[h]
+			}
+			_ = w.Write(rec)
+		}
+		w.Flush()
+		if err := w.Error(); err != nil {
+			return nil, fmt.Errorf("create_xml_data_source: writing csv: %w", err)
+		}
+
+		fields := map[string]string{"type": "csv", "name": name}
+		data, err := c.PostFormFileFields("/platform/data-sources", "source_file", "feed.csv", buf.Bytes(), fields)
+		if err != nil {
+			return nil, fmt.Errorf("create_xml_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Imported %d items with columns [%s] from the XML feed.\n%s",
+			len(rows), strings.Join(headers, ", "), string(data))), nil
+	}
+}
+
+// xmlItemsToRows scans the stream for elements named itemsPath and flattens each
+// one level deep: direct child element name -> concatenated text of its subtree.
+// ponytail: attributes and nested structure are dropped; repeated child names keep the first value.
+func xmlItemsToRows(r io.Reader, itemsPath string) ([]string, []map[string]string, error) {
+	dec := xml.NewDecoder(r)
+	var headers []string
+	seen := map[string]bool{}
+	var rows []map[string]string
+
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok || se.Name.Local != itemsPath {
+			continue
+		}
+
+		row := map[string]string{}
+		depth := 0
+		field := ""
+		var val strings.Builder
+	item:
+		for {
+			t, err := dec.Token()
+			if err != nil {
+				return nil, nil, err
+			}
+			switch tt := t.(type) {
+			case xml.StartElement:
+				depth++
+				if depth == 1 {
+					field = tt.Name.Local
+					val.Reset()
+				}
+			case xml.CharData:
+				if depth >= 1 {
+					val.Write(tt)
+				}
+			case xml.EndElement:
+				if depth == 0 {
+					break item // closing tag of the item itself
+				}
+				if depth == 1 {
+					if _, dup := row[field]; !dup {
+						row[field] = strings.TrimSpace(val.String())
+						if !seen[field] {
+							seen[field] = true
+							headers = append(headers, field)
+						}
+					}
+				}
+				depth--
+			}
+		}
+		rows = append(rows, row)
+	}
+	return headers, rows, nil
 }
 
 func GetDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {

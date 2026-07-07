@@ -1166,7 +1166,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
-		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. After creation, configure it with set_data_source_elements and start the import with publish_data_source; once imported, its items can be served as results in Searchable Product Finder content. For a CSV file use create_csv_data_source instead."),
+		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. After creation, configure it with set_data_source_elements and start the import with publish_data_source; once imported, its items can be served as results in Searchable Product Finder content. For a CSV file use create_csv_data_source instead. For an XML feed prefer create_xml_data_source: type xml here currently imports 0 items because the item path cannot be configured via the API."),
 		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
 		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
 		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
@@ -1180,6 +1180,14 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content"), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename, defaults to data.csv")),
 	), tools.CreateCSVDataSource(c))
+
+	s.AddTool(mcp.NewTool(
+		"create_xml_data_source",
+		mcp.WithDescription("Create a data source from a remote XML feed by fetching it, flattening each item node one level deep and importing it through the CSV pipeline. Use this instead of create_data_source with type xml (which currently imports 0 items because the item path cannot be configured via the API). The import is a snapshot: it does not auto-sync with the feed; to refresh, delete and recreate. After creation, map columns with set_data_source_elements and run publish_data_source."),
+		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
+		mcp.WithString("feed_url", mcp.Description("Fully qualified URL of the XML feed"), mcp.Required()),
+		mcp.WithString("items_path", mcp.Description("Name of the repeating item node, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds"), mcp.Required()),
+	), tools.CreateXMLDataSource(c))
 
 	s.AddTool(mcp.NewTool(
 		"get_data_source",
