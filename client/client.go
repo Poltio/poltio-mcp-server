@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const defaultBaseURL = "https://api-stage.poltio.com"
+const defaultBaseURL = "https://api.poltio.com"
 
 type PoltioClient struct {
 	baseURL    string
