@@ -64,6 +64,9 @@ func CreateTheme(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 			if err := json.Unmarshal([]byte(raw), &extra); err != nil {
 				return nil, fmt.Errorf("fields_json must be valid JSON: %w", err)
 			}
+			if extra == nil { // JSON "null" unmarshals to a nil map
+				extra = map[string]any{}
+			}
 		}
 		extra["name"] = name
 		body := map[string]any{"name": name, "theme": extra}
@@ -89,6 +92,9 @@ func UpdateTheme(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		var fields map[string]any
 		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 			return nil, fmt.Errorf("fields_json must be valid JSON: %w", err)
+		}
+		if fields == nil { // JSON "null" unmarshals to a nil map
+			fields = map[string]any{}
 		}
 		body := map[string]any{"theme": fields}
 		if v := req.GetString("name", ""); v != "" {

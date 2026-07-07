@@ -178,9 +178,10 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetString("options_json", ""); v != "" {
 			var opts map[string]any
-			if err := json.Unmarshal([]byte(v), &opts); err == nil {
-				body["options"] = opts
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
 			}
+			body["options"] = opts
 		}
 		data, err := c.Post("/platform/content", body)
 		if err != nil {
@@ -347,9 +348,10 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		}
 		if v := req.GetString("options_json", ""); v != "" {
 			var opts map[string]any
-			if err := json.Unmarshal([]byte(v), &opts); err == nil {
-				body["options"] = opts
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
 			}
+			body["options"] = opts
 		}
 		data, err := c.Put("/platform/content/"+publicID, body)
 		if err != nil {
