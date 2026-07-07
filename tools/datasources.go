@@ -121,7 +121,7 @@ func CreateXMLDataSource(c UploadClient) func(context.Context, mcp.CallToolReque
 		if err != nil {
 			return nil, fmt.Errorf("create_xml_data_source: fetching feed: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("create_xml_data_source: feed returned HTTP %d", resp.StatusCode)
 		}
