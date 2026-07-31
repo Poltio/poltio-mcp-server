@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -1660,6 +1661,17 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 			server.WithEndpointPath("/mcp"),
 			server.WithStreamableHTTPCORS(server.WithCORSAllowedOrigins("*")),
 			server.WithHTTPContextFunc(withBearer),
+			// Without a TTL the sweeper never runs and session state is kept for
+			// the life of the process. Clients do not always send the DELETE that
+			// releases it — a dropped connection skips it, and so does a client
+			// whose token expired, since that DELETE is answered with a 401.
+			//
+			// A day rather than minutes: idle is measured from the last request,
+			// and the heartbeat that would also refresh an open SSE stream is off
+			// by default in mcp-go. A short TTL would therefore expire a session
+			// the user still has open. This only reclaims genuinely abandoned
+			// ones, which is all that was leaking.
+			server.WithSessionIdleTTL(24*time.Hour),
 		)
 		log.Printf("poltio-mcp-server listening on :%s/mcp (api %s, resource %s)",
 			port, client.BaseURL(), publicURL())

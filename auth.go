@@ -318,8 +318,8 @@ func requireBearer(next http.Handler, metadataURL string) http.Handler {
 
 		// Resolves from the per-token cache after the first request, so this
 		// costs one API call per new token rather than one per request. A token
-		// revoked after it was cached keeps passing here until the process
-		// restarts; the API still rejects the individual tool calls.
+		// that dies mid-session passes here until a tool call fails and evicts
+		// it (see withAuth); the request after that re-validates and 401s.
 		if _, err := clientForToken(tok); err != nil {
 			if errors.Is(err, client.ErrUnauthorized) {
 				challenge(w, metadataURL, "invalid_token", "Your Poltio authorization is invalid or has expired.")
