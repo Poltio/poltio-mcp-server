@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,6 +13,11 @@ import (
 )
 
 const defaultBaseURL = "https://api.poltio.com"
+
+// ErrUnauthorized is returned when the API rejects the token. The API answers an
+// invalid or expired token with a 302 to its own root rather than a 401, so this
+// covers both.
+var ErrUnauthorized = errors.New("poltio rejected the API token: POLTIO_API_TOKEN is missing, invalid, or expired — create a new token at Poltio → Settings → Tokens, then update it in your MCP client settings")
 
 type PoltioClient struct {
 	baseURL    string
@@ -34,9 +40,16 @@ func NewForTest(token, orgID, baseURL string) *PoltioClient {
 
 func newClient(token, baseURL string) *PoltioClient {
 	return &PoltioClient{
-		baseURL:    baseURL,
-		token:      token,
-		httpClient: &http.Client{},
+		baseURL: baseURL,
+		token:   token,
+		httpClient: &http.Client{
+			// Do not follow redirects. A rejected token 302s to the API root, which
+			// answers 200 with a version banner — following it turns an auth failure
+			// into a bogus success that only shows up later as a JSON parse error.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 
@@ -197,6 +210,24 @@ func (c *PoltioClient) PostFormFileFields(path, fieldName, filename string, cont
 	return c.do(req)
 }
 
+// redirectsToRoot reports whether loc points at the API root, which is where the
+// API sends any request carrying a rejected token. Redirects to anywhere else are
+// not an auth problem and must not be reported as one.
+func (c *PoltioClient) redirectsToRoot(loc string) bool {
+	if loc == "" {
+		return false
+	}
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return false
+	}
+	u, err := base.Parse(loc)
+	if err != nil {
+		return false
+	}
+	return u.Host == base.Host && (u.Path == "" || u.Path == "/")
+}
+
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -206,6 +237,16 @@ func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		loc := resp.Header.Get("Location")
+		if c.redirectsToRoot(loc) {
+			return nil, ErrUnauthorized
+		}
+		return nil, fmt.Errorf("unexpected redirect %d to %q", resp.StatusCode, loc)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
