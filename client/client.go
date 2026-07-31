@@ -9,10 +9,14 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 )
 
-const defaultBaseURL = "https://api.poltio.com"
+// TODO(oauth): temporary — points at staging while the OAuth server is tested.
+// Restore to https://api.poltio.com before tagging a release, since stdio users
+// (Claude Desktop) get this default too and have no env var set.
+const defaultBaseURL = "https://api-stage.poltio.com"
 
 // ErrUnauthorized is returned when the API rejects the token. The API answers an
 // invalid or expired token with a 302 to its own root rather than a 401, so this
@@ -27,8 +31,17 @@ type PoltioClient struct {
 	httpClient *http.Client
 }
 
+// BaseURL is the Poltio API the server talks to. Override with
+// POLTIO_API_BASE_URL to point at a staging environment.
+func BaseURL() string {
+	if v := os.Getenv("POLTIO_API_BASE_URL"); v != "" {
+		return v
+	}
+	return defaultBaseURL
+}
+
 func New(token string) *PoltioClient {
-	return newClient(token, defaultBaseURL)
+	return newClient(token, BaseURL())
 }
 
 // NewForTest creates a client pointing at a custom base URL. Use in tests only.

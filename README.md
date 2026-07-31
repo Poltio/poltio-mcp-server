@@ -32,8 +32,10 @@ scripts/build-mcpb.sh v1.2.3
 
 | Variable | Description |
 |---|---|
-| `POLTIO_API_TOKEN` | Bearer token — from Poltio account → Settings → Tokens |
+| `POLTIO_API_TOKEN` | Bearer token — from Poltio account → Settings → Tokens. Required in stdio mode; ignored for authenticated HTTP callers |
 | `PORT` | When set, starts an HTTP server on that port instead of stdio |
+| `POLTIO_API_BASE_URL` | Poltio API to talk to. Defaults to the production API |
+| `MCP_PUBLIC_URL` | This server's own public URL, published as the OAuth resource identifier. Defaults to `https://mcp.poltio.com` |
 
 The server automatically fetches your organizations at startup and activates the first one. Use the `list_organizations` and `switch_organization` tools to view and change the active organization.
 
@@ -47,12 +49,27 @@ POLTIO_API_TOKEN=your-token PORT=8080 ./poltio-mcp-server
 
 The MCP endpoint is available at `http://localhost:8080/mcp`.
 
-In HTTP mode the server uses the single `POLTIO_API_TOKEN` from its own environment for every request — it does **not** read a per-request `Authorization` header. Anyone who can reach the endpoint acts as that token's account, so do not expose it publicly.
+In HTTP mode every request must carry its own `Authorization: Bearer <token>` header, and each token gets its own client and active organization. Requests without one are rejected with `401` and a `WWW-Authenticate` header pointing at the OAuth metadata below, which is what lets an MCP client start an authorization flow.
+
+The token can be either a personal API token from Settings → Tokens or an OAuth access token issued by the Poltio API — the API accepts both on the same endpoints.
+
+### OAuth discovery
+
+The server publishes protected resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource`:
+
+```json
+{
+  "resource": "https://mcp.poltio.com",
+  "authorization_servers": ["https://api.poltio.com"]
+}
+```
+
+`resource` comes from `MCP_PUBLIC_URL` and `authorization_servers` from `POLTIO_API_BASE_URL`, so both must be set correctly for a client to complete the flow.
 
 ### Publishing to Smithery
 
 1. Deploy the server to any host with a public HTTPS URL (Fly.io, Railway, Render, VPS).
-2. Set `POLTIO_API_TOKEN` and `PORT` in the deployment environment.
+2. Set `PORT` and `MCP_PUBLIC_URL` in the deployment environment. `POLTIO_API_TOKEN` is not needed — callers supply their own.
 3. Go to [smithery.ai](https://smithery.ai) → Publish → enter your server URL (`https://your-host.com/mcp`).
 4. Users connecting through Smithery must configure `Authorization: Bearer <token>` in the Smithery connection settings.
 
