@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -209,13 +210,10 @@ func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected the handler error to propagate")
 	}
-	// An OAuth caller has no POLTIO_API_TOKEN to fix, so the sentinel's own
-	// advice must not reach them.
-	if strings.Contains(err.Error(), "POLTIO_API_TOKEN") {
-		t.Errorf("OAuth caller got stdio advice: %v", err)
-	}
-	if !strings.Contains(err.Error(), "reconnect") {
-		t.Errorf("error does not tell the user to reconnect: %v", err)
+	// Identity, not message text: this asserts the OAuth substitution happened.
+	// What that message must say is pinned in TestReauthMessageSuitsOAuthCallers.
+	if !errors.Is(err, errReauthNeeded) {
+		t.Errorf("OAuth caller did not get the reconnect error: %v", err)
 	}
 
 	clientsMu.Lock()
@@ -240,8 +238,26 @@ func TestStdioKeepsEnvVarAdvice(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected the handler error to propagate")
 	}
-	if !strings.Contains(err.Error(), "POLTIO_API_TOKEN") {
-		t.Errorf("stdio lost the advice it needs: %v", err)
+	if errors.Is(err, errReauthNeeded) {
+		t.Errorf("stdio got the OAuth substitution: %v", err)
+	}
+	if !errors.Is(err, client.ErrUnauthorized) {
+		t.Errorf("stdio lost the original error: %v", err)
+	}
+}
+
+// The substitution is only worth making if the replacement message is actually
+// useful to an OAuth caller. Asserted once, here, rather than in every test
+// that happens to trigger it.
+func TestReauthMessageSuitsOAuthCallers(t *testing.T) {
+	msg := errReauthNeeded.Error()
+	// The whole reason this error exists: a connector user has no env var and
+	// no client-settings token to edit.
+	if strings.Contains(msg, "POLTIO_API_TOKEN") {
+		t.Errorf("reconnect message repeats stdio advice: %s", msg)
+	}
+	if !strings.Contains(msg, "reconnect") {
+		t.Errorf("reconnect message does not say to reconnect: %s", msg)
 	}
 }
 
