@@ -113,14 +113,18 @@ func TestResourceMetadata(t *testing.T) {
 	var got struct {
 		Resource             string   `json:"resource"`
 		AuthorizationServers []string `json:"authorization_servers"`
+		ResourceName         string   `json:"resource_name"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("parse metadata: %v", err)
 	}
-	// Trailing slash must be trimmed: the resource identifier has to match the
-	// one the authorization server issues tokens for.
-	if got.Resource != "https://mcp.example.com" {
-		t.Errorf("resource = %q, want %q", got.Resource, "https://mcp.example.com")
+	// Trailing slash trimmed, and the identifier is the MCP endpoint rather than
+	// the origin — a client comparing it against the URL the user typed must match.
+	if got.Resource != "https://mcp.example.com/mcp" {
+		t.Errorf("resource = %q, want %q", got.Resource, "https://mcp.example.com/mcp")
+	}
+	if got.ResourceName != "Poltio" {
+		t.Errorf("resource_name = %q, want %q", got.ResourceName, "Poltio")
 	}
 	if len(got.AuthorizationServers) != 1 || got.AuthorizationServers[0] != "https://api-stage.example.com" {
 		t.Errorf("authorization_servers = %v", got.AuthorizationServers)
@@ -262,6 +266,119 @@ func TestClientForCtxIsolatesTokens(t *testing.T) {
 	}
 	if a == b {
 		t.Error("different tokens share a client")
+	}
+}
+
+// The icon must be fetchable without a token — a client renders it before the
+// user has authenticated, so serving it behind the 401 would leave it blank.
+func TestIconServedUnauthenticated(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, iconPath, nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", ct)
+	}
+	// Guard the embed: a missing or truncated file would still serve 200.
+	if got := w.Body.Bytes(); len(got) < 8 || string(got[1:4]) != "PNG" {
+		t.Errorf("body is not a PNG (%d bytes)", len(got))
+	}
+}
+
+// The public discovery endpoints are reads: a write method must be refused
+// rather than answered with the payload.
+func TestPublicEndpointsRejectWriteMethods(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	for _, path := range []string{iconPath, resourceMetadataPath} {
+		for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Errorf("%s %s = %d, want 405", method, path, w.Code)
+			}
+			if w.Body.Len() > 64 {
+				t.Errorf("%s %s returned a %d-byte body; payload should be withheld",
+					method, path, w.Body.Len())
+			}
+			if allow := w.Header().Get("Allow"); allow == "" {
+				t.Errorf("%s %s: 405 without an Allow header", method, path)
+			}
+		}
+	}
+}
+
+// A client that normalises the resource URL derives the slashed metadata path;
+// both forms must serve, and neither may swallow unrelated sub-paths.
+func TestResourceMetadataPathVariants(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	serves := []string{
+		resourceMetadataPath,
+		resourceMetadataPath + "/mcp",
+		resourceMetadataPath + "/mcp/",
+	}
+	for _, path := range serves {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, w.Code)
+		}
+	}
+
+	// {$} anchors the slashed pattern; a subtree match would answer here too.
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, resourceMetadataPath+"/mcp/foo", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("GET %s/mcp/foo = %d, want 404", resourceMetadataPath, w.Code)
+	}
+}
+
+// A preflight must be answered with the CORS contract, not with the payload.
+func TestIconPreflight(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodOptions, iconPath, nil)
+	r.Header.Set("Origin", "https://claude.ai")
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("preflight returned a %d-byte body, want none", w.Body.Len())
+	}
+	if m := w.Header().Get("Access-Control-Allow-Methods"); m == "" {
+		t.Error("preflight missing Access-Control-Allow-Methods")
+	}
+}
+
+// The Etag is what makes conditional requests work; without a 304 every client
+// re-downloads the icon on each revalidation.
+func TestIconConditionalRequest(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, httptest.NewRequest(http.MethodGet, iconPath, nil))
+	etag := first.Header().Get("Etag")
+	if etag == "" {
+		t.Fatal("no Etag on the icon response")
+	}
+
+	second := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, iconPath, nil)
+	r.Header.Set("If-None-Match", etag)
+	h.ServeHTTP(second, r)
+
+	if second.Code != http.StatusNotModified {
+		t.Errorf("If-None-Match got %d, want 304", second.Code)
+	}
+	if second.Body.Len() != 0 {
+		t.Errorf("304 carried a %d-byte body", second.Body.Len())
 	}
 }
 

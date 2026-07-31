@@ -71,7 +71,14 @@ func main() {
 		}
 	}
 
-	s := server.NewMCPServer("poltio", version)
+	// Identity a client can show next to the connector. The icon is served by
+	// this server itself (see iconPath), so the URL is only reachable in HTTP
+	// mode — harmless in stdio mode, where no client fetches it.
+	s := server.NewMCPServer("poltio", version,
+		server.WithTitle("Poltio"),
+		server.WithWebsiteURL("https://poltio.com"),
+		server.WithIcons(mcp.Icon{Src: iconURL(), MIMEType: "image/png", Sizes: []string{"1040x1040"}}),
+	)
 
 	// ── Content ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
