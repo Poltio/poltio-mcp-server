@@ -191,6 +191,22 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 		})
 	})
 
+	// Load balancer health checks. Before this server had a router every path
+	// answered 200, so the Google Cloud health check passed by accident; adding
+	// the mux made "/" a 404 and the backend went unhealthy ("no healthy
+	// upstream"), even though the pods were Ready on their tcpSocket probe.
+	//
+	// "/{$}" matches the root and nothing else — a bare "/" pattern is a subtree
+	// in ServeMux and would put us back to answering 200 for every unknown path,
+	// which is what hid this problem in the first place.
+	health := readOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("/{$}", health)
+	mux.HandleFunc("/healthz", health)
+
 	mux.HandleFunc(iconPath, readOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		w.Header().Set("Etag", iconETag)

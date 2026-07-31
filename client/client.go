@@ -13,10 +13,11 @@ import (
 	"sync"
 )
 
-// The default must stay production: stdio users (Claude Desktop) get it with no
-// env var set, and so does the deployed server unless one is provided. Point a
-// deployment at staging with POLTIO_API_BASE_URL rather than editing this.
-const defaultBaseURL = "https://api.poltio.com"
+// TODO(oauth): staging until the OAuth server ships to production — /oauth/*
+// only exists on api-stage today, so this is what makes the connector work.
+// Anything with no POLTIO_API_BASE_URL set gets this, including the Claude
+// Desktop .mcpb bundle. Switch to https://api.poltio.com once prod has OAuth.
+const defaultBaseURL = "https://api-stage.poltio.com"
 
 // ErrUnauthorized is returned when the API rejects the token. The API answers an
 // invalid or expired token with a 302 to its own root rather than a 401, so this

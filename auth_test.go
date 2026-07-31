@@ -312,6 +312,32 @@ func TestPublicEndpointsRejectWriteMethods(t *testing.T) {
 	}
 }
 
+// The load balancer health-checks the backend over HTTP. A non-200 here takes
+// the whole service out ("no healthy upstream") even while pods are Ready, so
+// these paths must answer 200 without a token — and nothing else may.
+func TestHealthEndpoints(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	for _, path := range []string{"/", "/healthz"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, w.Code)
+		}
+	}
+
+	// The root must be an exact match. A bare "/" ServeMux pattern is a subtree
+	// and would answer 200 for every unknown path — the behaviour that hid the
+	// health-check breakage until the backend went down.
+	for _, path := range []string{"/nope", "/oauth/authorize", "/mcpx"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404 (root pattern is over-matching)", path, w.Code)
+		}
+	}
+}
+
 // A client that normalises the resource URL derives the slashed metadata path;
 // both forms must serve, and neither may swallow unrelated sub-paths.
 func TestResourceMetadataPathVariants(t *testing.T) {
