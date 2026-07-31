@@ -326,6 +326,23 @@ func TestHealthEndpoints(t *testing.T) {
 		}
 	}
 
+	// Health endpoints are probed by infrastructure, never cross-origin from a
+	// browser, so they must not advertise CORS — and a write method is still a
+	// 405 rather than a 200.
+	for _, path := range []string{"/", "/healthz"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if origin := w.Header().Get("Access-Control-Allow-Origin"); origin != "" {
+			t.Errorf("GET %s advertises Access-Control-Allow-Origin: %q", path, origin)
+		}
+
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, nil))
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST %s = %d, want 405", path, w.Code)
+		}
+	}
+
 	// The root must be an exact match. A bare "/" ServeMux pattern is a subtree
 	// and would answer 200 for every unknown path — the behaviour that hid the
 	// health-check breakage until the backend went down.
