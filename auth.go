@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -298,20 +299,35 @@ func requireBearer(next http.Handler, metadataURL string) http.Handler {
 				challenge(w, metadataURL, "invalid_token", "Your Poltio authorization is invalid or has expired.")
 				return
 			}
-			// The API is unreachable or the account has no organization. Not an
-			// authentication failure — answering 401 would send the client round
-			// the OAuth flow to no effect.
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "server_error",
-				"error_description": err.Error(),
-			})
+			// The token is good but the account cannot use the server. Permanent
+			// until the user acts, so 403 — a 503 invites retries that cannot
+			// succeed, and can make health tooling read this as an outage.
+			if errors.Is(err, errNoOrganization) {
+				writeErr(w, http.StatusForbidden, "forbidden", err.Error())
+				return
+			}
+			// Anything else is upstream: unreachable API, unparseable response.
+			// Retryable, so 503 — but the detail stays in the log rather than
+			// going to the caller, since it can carry internal URLs and paths.
+			log.Printf("token validation failed: %v", err)
+			writeErr(w, http.StatusServiceUnavailable, "server_error",
+				"Poltio is temporarily unavailable. Try again shortly.")
 			return
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// writeErr sends a JSON error body. Descriptions are written for the end user;
+// upstream error text belongs in the log, not in a response.
+func writeErr(w http.ResponseWriter, status int, code, description string) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             code,
+		"error_description": description,
 	})
 }
 

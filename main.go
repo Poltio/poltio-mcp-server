@@ -34,6 +34,11 @@ type orgEntry struct {
 	ID int `json:"id"`
 }
 
+// errNoOrganization means the token is valid but the account cannot use the
+// server yet. A sentinel so the HTTP layer can answer 403 rather than lumping
+// it in with an upstream outage and inviting retries that cannot succeed.
+var errNoOrganization = errors.New("this Poltio account belongs to no organization — create or join one, then reconnect")
+
 // activateFirstOrg selects the account's first organization as the active one.
 func activateFirstOrg(c *client.PoltioClient) error {
 	data, err := c.GetOrganizations()
@@ -45,7 +50,7 @@ func activateFirstOrg(c *client.PoltioClient) error {
 		return fmt.Errorf("parse organizations: %w", err)
 	}
 	if len(orgs) == 0 {
-		return errors.New("this account belongs to no organization")
+		return errNoOrganization
 	}
 	c.SetOrgID(strconv.Itoa(orgs[0].ID))
 	return nil

@@ -143,11 +143,14 @@ func TestRejectedTokenGetsChallenge(t *testing.T) {
 }
 
 // An unreachable API is not an authentication failure. Answering 401 would send
-// the client through the OAuth flow to no effect.
+// the client through the OAuth flow to no effect. The upstream detail must stay
+// out of the response — it can carry internal URLs and paths.
 func TestUpstreamFailureIsNotAChallenge(t *testing.T) {
 	const tok = "api-down-token"
+	const secret = "internal-host.svc.cluster.local"
 	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(secret))
 	})
 
 	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -164,6 +167,33 @@ func TestUpstreamFailureIsNotAChallenge(t *testing.T) {
 	}
 	if auth := w.Header().Get("WWW-Authenticate"); auth != "" {
 		t.Errorf("upstream outage sent a challenge: %q", auth)
+	}
+	if body := w.Body.String(); strings.Contains(body, secret) {
+		t.Errorf("upstream error text reached the client: %s", body)
+	}
+}
+
+// A valid token on an account with no organization is a permanent, user-fixable
+// state — not an outage. 503 would invite retries that cannot succeed and can
+// read as a service failure to whatever is watching.
+func TestNoOrganizationIsForbidden(t *testing.T) {
+	const tok = "orgless-token"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"organizations":[]}`))
+	})
+
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", w.Code)
+	}
+	// Actionable by the user, so this one is worth telling them.
+	if body := w.Body.String(); !strings.Contains(body, "no organization") {
+		t.Errorf("403 body does not say what to fix: %s", body)
 	}
 }
 
