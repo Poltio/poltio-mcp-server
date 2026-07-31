@@ -77,7 +77,7 @@ func main() {
 	s := server.NewMCPServer("poltio", version,
 		server.WithTitle("Poltio"),
 		server.WithWebsiteURL("https://poltio.com"),
-		server.WithIcons(mcp.Icon{Src: iconURL(), MIMEType: "image/png", Sizes: []string{"48x48"}}),
+		server.WithIcons(mcp.Icon{Src: iconURL(), MIMEType: "image/png", Sizes: []string{"1040x1040"}}),
 	)
 
 	// ── Content ──────────────────────────────────────────────────────────────
