@@ -205,8 +205,17 @@ func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
 	})
 
 	ctx := context.WithValue(context.Background(), tokenCtxKey{}, tok)
-	if _, err := handler(ctx, mcp.CallToolRequest{}); err == nil {
+	_, err := handler(ctx, mcp.CallToolRequest{})
+	if err == nil {
 		t.Fatal("expected the handler error to propagate")
+	}
+	// An OAuth caller has no POLTIO_API_TOKEN to fix, so the sentinel's own
+	// advice must not reach them.
+	if strings.Contains(err.Error(), "POLTIO_API_TOKEN") {
+		t.Errorf("OAuth caller got stdio advice: %v", err)
+	}
+	if !strings.Contains(err.Error(), "reconnect") {
+		t.Errorf("error does not tell the user to reconnect: %v", err)
 	}
 
 	clientsMu.Lock()
@@ -214,6 +223,25 @@ func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
 	clientsMu.Unlock()
 	if still {
 		t.Error("expired token still cached; the next request will skip validation and never get a 401")
+	}
+}
+
+// stdio has no connector to reconnect and no per-request token — the sentinel's
+// env-var advice is exactly right there, so the OAuth rewrite must not apply.
+func TestStdioKeepsEnvVarAdvice(t *testing.T) {
+	handler := withAuth(func(*client.PoltioClient) toolHandler {
+		return func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, fmt.Errorf("list_content: %w", client.ErrUnauthorized)
+		}
+	})
+
+	// No token in context is what stdio mode looks like.
+	_, err := handler(context.Background(), mcp.CallToolRequest{})
+	if err == nil {
+		t.Fatal("expected the handler error to propagate")
+	}
+	if !strings.Contains(err.Error(), "POLTIO_API_TOKEN") {
+		t.Errorf("stdio lost the advice it needs: %v", err)
 	}
 }
 

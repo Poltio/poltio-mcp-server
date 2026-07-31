@@ -137,15 +137,19 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 	}
 	c, err := clientForToken(tok)
 	if err != nil {
-		// The client.ErrUnauthorized text tells stdio users to edit an env var,
-		// which an OAuth caller cannot do.
 		if errors.Is(err, client.ErrUnauthorized) {
-			return nil, errors.New("your Poltio authorization is invalid or has expired — reconnect the Poltio connector to sign in again")
+			return nil, errReauthNeeded
 		}
 		return nil, err
 	}
 	return c, nil
 }
+
+// errReauthNeeded replaces client.ErrUnauthorized for callers that authenticated
+// through the connector flow. The sentinel's own text tells the user to edit
+// POLTIO_API_TOKEN and their MCP client settings, which is right for stdio and
+// useless over OAuth — there is no env var to fix, only a connector to reconnect.
+var errReauthNeeded = errors.New("your Poltio authorization is invalid or has expired — reconnect the Poltio connector to sign in again")
 
 // clientForToken resolves and caches the client for one bearer token. The first
 // call for a token hits the API to select an organization, which doubles as
@@ -196,16 +200,18 @@ func withAuth[T any](newHandler func(T) toolHandler) toolHandler {
 		}
 
 		res, err := newHandler(any(c).(T))(ctx, req)
-		if errors.Is(err, client.ErrUnauthorized) {
+		if tok, _ := ctx.Value(tokenCtxKey{}).(string); tok != "" && errors.Is(err, client.ErrUnauthorized) {
 			// The token passed validation when it was cached and has since
 			// expired or been revoked — which every token does, since they last
 			// two weeks. Drop it so the next request misses the cache,
 			// re-validates, and gets the 401 challenge that restarts the OAuth
 			// flow. Without this the connector fails every call until the pod
 			// restarts, with nothing telling the client to re-authenticate.
-			if tok, _ := ctx.Value(tokenCtxKey{}).(string); tok != "" {
-				evictToken(tok)
-			}
+			evictToken(tok)
+			// Same substitution clientForCtx makes: this caller has no env var
+			// to fix. Only rewritten in OAuth mode — a stdio user genuinely does
+			// need the sentinel's advice.
+			return nil, errReauthNeeded
 		}
 		return res, err
 	}
