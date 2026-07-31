@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/Poltio/poltio-mcp-server/client"
 )
@@ -170,6 +173,47 @@ func TestUpstreamFailureIsNotAChallenge(t *testing.T) {
 	}
 	if body := w.Body.String(); strings.Contains(body, secret) {
 		t.Errorf("upstream error text reached the client: %s", body)
+	}
+}
+
+// Tokens expire — every two weeks, for everyone. Once one is cached, the HTTP
+// layer stops re-validating it, so a tool call failing with ErrUnauthorized is
+// the only signal left that it died. If that does not evict the cache entry,
+// every later call fails identically until the pod restarts and the client is
+// never told to re-authenticate.
+func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
+	const tok = "expires-mid-session"
+	stubAPI(t, tok, apiAccepts)
+
+	// Prime the cache the way a first successful request would.
+	if _, err := clientForToken(tok); err != nil {
+		t.Fatalf("priming the cache: %v", err)
+	}
+	clientsMu.Lock()
+	_, cached := clients[tok]
+	clientsMu.Unlock()
+	if !cached {
+		t.Fatal("token was not cached, test proves nothing")
+	}
+
+	// The token dies upstream; the next tool call surfaces it wrapped, exactly
+	// as the tools package does with %w.
+	handler := withAuth(func(*client.PoltioClient) toolHandler {
+		return func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, fmt.Errorf("list_content: %w", client.ErrUnauthorized)
+		}
+	})
+
+	ctx := context.WithValue(context.Background(), tokenCtxKey{}, tok)
+	if _, err := handler(ctx, mcp.CallToolRequest{}); err == nil {
+		t.Fatal("expected the handler error to propagate")
+	}
+
+	clientsMu.Lock()
+	_, still := clients[tok]
+	clientsMu.Unlock()
+	if still {
+		t.Error("expired token still cached; the next request will skip validation and never get a 401")
 	}
 }
 

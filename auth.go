@@ -194,8 +194,28 @@ func withAuth[T any](newHandler func(T) toolHandler) toolHandler {
 		if err != nil {
 			return nil, err
 		}
-		return newHandler(any(c).(T))(ctx, req)
+
+		res, err := newHandler(any(c).(T))(ctx, req)
+		if errors.Is(err, client.ErrUnauthorized) {
+			// The token passed validation when it was cached and has since
+			// expired or been revoked — which every token does, since they last
+			// two weeks. Drop it so the next request misses the cache,
+			// re-validates, and gets the 401 challenge that restarts the OAuth
+			// flow. Without this the connector fails every call until the pod
+			// restarts, with nothing telling the client to re-authenticate.
+			if tok, _ := ctx.Value(tokenCtxKey{}).(string); tok != "" {
+				evictToken(tok)
+			}
+		}
+		return res, err
 	}
+}
+
+// evictToken forgets the cached client for a token.
+func evictToken(tok string) {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	delete(clients, tok)
 }
 
 // oauthHandler wraps the MCP endpoint with the two pieces an MCP client needs
