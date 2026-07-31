@@ -312,6 +312,32 @@ func TestPublicEndpointsRejectWriteMethods(t *testing.T) {
 	}
 }
 
+// A client that normalises the resource URL derives the slashed metadata path;
+// both forms must serve, and neither may swallow unrelated sub-paths.
+func TestResourceMetadataPathVariants(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	serves := []string{
+		resourceMetadataPath,
+		resourceMetadataPath + "/mcp",
+		resourceMetadataPath + "/mcp/",
+	}
+	for _, path := range serves {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, w.Code)
+		}
+	}
+
+	// {$} anchors the slashed pattern; a subtree match would answer here too.
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, resourceMetadataPath+"/mcp/foo", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("GET %s/mcp/foo = %d, want 404", resourceMetadataPath, w.Code)
+	}
+}
+
 // A preflight must be answered with the CORS contract, not with the payload.
 func TestIconPreflight(t *testing.T) {
 	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))

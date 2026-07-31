@@ -205,7 +205,12 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 	// RFC 9728 locates the metadata for a resource with a path by appending that
 	// path to the well-known prefix. Clients that derive the URL themselves look
 	// here instead of at the resource_metadata we hand them in the challenge.
+	// Both slash forms, for the same reason /mcp and /mcp/ are both registered —
+	// a client that normalises the resource URL derives the slashed variant.
+	// The {$} anchors the pattern to that exact path: without it ServeMux would
+	// treat it as a subtree and answer for /mcp/anything too.
 	mux.HandleFunc(resourceMetadataPath+"/mcp", metadata)
+	mux.HandleFunc(resourceMetadataPath+"/mcp/{$}", metadata)
 
 	// Both patterns: ServeMux treats "/mcp" and "/mcp/" as distinct, and a
 	// client that normalises the trailing slash would otherwise get a 404
