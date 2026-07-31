@@ -13,10 +13,10 @@ import (
 	"sync"
 )
 
-// TODO(oauth): temporary — points at staging while the OAuth server is tested.
-// Restore to https://api.poltio.com before tagging a release, since stdio users
-// (Claude Desktop) get this default too and have no env var set.
-const defaultBaseURL = "https://api-stage.poltio.com"
+// The default must stay production: stdio users (Claude Desktop) get it with no
+// env var set, and so does the deployed server unless one is provided. Point a
+// deployment at staging with POLTIO_API_BASE_URL rather than editing this.
+const defaultBaseURL = "https://api.poltio.com"
 
 // ErrUnauthorized is returned when the API rejects the token. The API answers an
 // invalid or expired token with a 302 to its own root rather than a 401, so this
