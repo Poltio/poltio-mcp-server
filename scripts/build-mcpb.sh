@@ -9,7 +9,7 @@ VERSION="${VERSION#v}"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT="$ROOT/dist/mcpb"
 
-rm -rf "$OUT"
+rm -rf "$OUT" "$ROOT/dist/poltio.mcpb"
 mkdir -p "$OUT/server"
 
 build() {
