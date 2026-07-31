@@ -113,14 +113,18 @@ func TestResourceMetadata(t *testing.T) {
 	var got struct {
 		Resource             string   `json:"resource"`
 		AuthorizationServers []string `json:"authorization_servers"`
+		ResourceName         string   `json:"resource_name"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("parse metadata: %v", err)
 	}
-	// Trailing slash must be trimmed: the resource identifier has to match the
-	// one the authorization server issues tokens for.
-	if got.Resource != "https://mcp.example.com" {
-		t.Errorf("resource = %q, want %q", got.Resource, "https://mcp.example.com")
+	// Trailing slash trimmed, and the identifier is the MCP endpoint rather than
+	// the origin — a client comparing it against the URL the user typed must match.
+	if got.Resource != "https://mcp.example.com/mcp" {
+		t.Errorf("resource = %q, want %q", got.Resource, "https://mcp.example.com/mcp")
+	}
+	if got.ResourceName != "Poltio" {
+		t.Errorf("resource_name = %q, want %q", got.ResourceName, "Poltio")
 	}
 	if len(got.AuthorizationServers) != 1 || got.AuthorizationServers[0] != "https://api-stage.example.com" {
 		t.Errorf("authorization_servers = %v", got.AuthorizationServers)
@@ -262,6 +266,25 @@ func TestClientForCtxIsolatesTokens(t *testing.T) {
 	}
 	if a == b {
 		t.Error("different tokens share a client")
+	}
+}
+
+// The icon must be fetchable without a token — a client renders it before the
+// user has authenticated, so serving it behind the 401 would leave it blank.
+func TestIconServedUnauthenticated(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, iconPath, nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", ct)
+	}
+	// Guard the embed: a missing or truncated file would still serve 200.
+	if got := w.Body.Bytes(); len(got) < 8 || string(got[1:4]) != "PNG" {
+		t.Errorf("body is not a PNG (%d bytes)", len(got))
 	}
 }
 

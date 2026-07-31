@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -17,6 +20,16 @@ import (
 // resourceMetadataPath is where an MCP client looks for the OAuth protected
 // resource metadata (RFC 9728) after receiving a 401 from /mcp.
 const resourceMetadataPath = "/.well-known/oauth-protected-resource"
+
+// iconPath serves the connector icon advertised in serverInfo. Embedded so the
+// binary has no runtime dependency on poltio.com's asset layout.
+const iconPath = "/icon.png"
+
+//go:embed icon.png
+var iconPNG []byte
+
+// iconURL is the absolute URL clients fetch the icon from.
+func iconURL() string { return publicURL() + iconPath }
 
 // tokenCtxKey carries the caller's bearer token from the HTTP request into the
 // tool handlers. Absent in stdio mode, where the env token is used instead.
@@ -132,7 +145,7 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc(resourceMetadataPath, func(w http.ResponseWriter, r *http.Request) {
+	metadata := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -140,10 +153,26 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"resource":              publicURL(),
-			"authorization_servers": []string{client.BaseURL()},
+			// The resource identifier is the MCP endpoint itself, not the origin
+			// — matching the shape Strava's working connector publishes.
+			"resource":                 publicURL() + "/mcp",
+			"authorization_servers":    []string{client.BaseURL()},
+			"bearer_methods_supported": []string{"header"},
+			"resource_name":            "Poltio",
 		})
+	}
+	mux.HandleFunc(iconPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		// ServeContent handles Content-Type, Range, and conditional requests.
+		http.ServeContent(w, r, "icon.png", time.Time{}, bytes.NewReader(iconPNG))
 	})
+
+	mux.HandleFunc(resourceMetadataPath, metadata)
+	// RFC 9728 locates the metadata for a resource with a path by appending that
+	// path to the well-known prefix. Clients that derive the URL themselves look
+	// here instead of at the resource_metadata we hand them in the challenge.
+	mux.HandleFunc(resourceMetadataPath+"/mcp", metadata)
 
 	// Both patterns: ServeMux treats "/mcp" and "/mcp/" as distinct, and a
 	// client that normalises the trailing slash would otherwise get a 404
