@@ -80,8 +80,8 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 		return c, nil
 	}
 
-	// Deliberately not holding the lock across the network call. Two concurrent
-	// first calls for the same token may both build a client; either is valid.
+	// Deliberately not holding the lock across the network call, so a slow
+	// activation cannot stall every other token's requests.
 	c = client.New(tok)
 	if err := activateFirstOrg(c); err != nil {
 		// Surface the real reason (bad token, no organization) instead of
@@ -94,9 +94,16 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 		return nil, err
 	}
 
+	// Check again under the lock: another request for this token may have
+	// finished activating while this one was on the network. The first client
+	// stored wins, because a caller may already be holding it and mutating its
+	// active organization — overwriting it would discard that silently.
 	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	if existing, ok := clients[tok]; ok {
+		return existing, nil
+	}
 	clients[tok] = c
-	clientsMu.Unlock()
 	return c, nil
 }
 

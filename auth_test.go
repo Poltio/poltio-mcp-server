@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Poltio/poltio-mcp-server/client"
 )
@@ -170,6 +173,66 @@ func TestClientForCtxCachesPerToken(t *testing.T) {
 	// Set by activateFirstOrg on first resolve; proves org state survives.
 	if gotOrg != "123" {
 		t.Errorf("Organization-Id = %q, want %q", gotOrg, "123")
+	}
+}
+
+// Two first-use requests for the same token race: both miss the cache, both
+// build a client, and both store. If the second store overwrites the first,
+// any state already applied to the returned client — a switch_organization
+// call, say — is silently dropped for every later request.
+func TestClientForCtxConcurrentFirstUseSharesOneClient(t *testing.T) {
+	const n = 2
+
+	var inFlight atomic.Int32
+	barrier := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hold every caller inside the network call until all of them have
+		// gotten past the cache miss, forcing the exact interleaving.
+		if inFlight.Add(1) == n {
+			close(barrier)
+		}
+		select {
+		case <-barrier:
+		case <-time.After(5 * time.Second): // don't hang CI on a regression
+		}
+		_, _ = w.Write([]byte(`{"organizations":[{"id":7}]}`))
+	}))
+	defer ts.Close()
+	t.Setenv("POLTIO_API_BASE_URL", ts.URL)
+
+	const tok = "concurrent-token"
+	t.Cleanup(func() {
+		clientsMu.Lock()
+		delete(clients, tok)
+		clientsMu.Unlock()
+	})
+
+	ctx := context.WithValue(context.Background(), tokenCtxKey{}, tok)
+	got := make([]*client.PoltioClient, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c, err := clientForCtx(ctx)
+			if err != nil {
+				t.Errorf("resolve %d: %v", i, err)
+				return
+			}
+			got[i] = c
+		}(i)
+	}
+	wg.Wait()
+
+	if got[0] != got[1] {
+		t.Errorf("concurrent first use returned different clients (%p, %p); one overwrote the other", got[0], got[1])
+	}
+
+	clientsMu.Lock()
+	cached := clients[tok]
+	clientsMu.Unlock()
+	if cached != got[0] {
+		t.Errorf("cached client %p is not the one handed to callers %p", cached, got[0])
 	}
 }
 
