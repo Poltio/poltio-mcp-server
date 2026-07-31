@@ -2,15 +2,30 @@
 
 MCP server that exposes [Poltio](https://poltio.com) platform content management as AI-accessible tools. Works with Claude Desktop, Gemini, and any MCP-compatible client.
 
-## Prerequisites
+## Install in Claude Desktop
 
-- Go 1.21+
-- A Poltio API token (from your account settings)
+1. Download **`poltio.mcpb`** from the [latest release](https://github.com/Poltio/poltio-mcp-server/releases/latest).
+2. Double-click it. Claude Desktop opens an install dialog — click **Install**.
+3. Paste your API token when prompted (Poltio → **Settings → Tokens**), then enable the extension.
 
-## Build
+Use a long-lived API token, not a short-lived session token — the latter stops working within a day.
+
+The bundle covers macOS (Intel and Apple Silicon) and Windows. On Linux, or for any other MCP client, use the manual setup below.
+
+> The macOS binary is unsigned (no Apple Developer ID), so the bundle clears its own quarantine flag on first launch. Without that, macOS terminates it with no error message.
+
+## Build from source
+
+Requires Go 1.21+ and a Poltio API token.
 
 ```bash
 go build -o poltio-mcp-server .
+```
+
+To rebuild the installer bundle (macOS only — needs `lipo`):
+
+```bash
+scripts/build-mcpb.sh v1.2.3
 ```
 
 ## Configuration
@@ -32,7 +47,7 @@ POLTIO_API_TOKEN=your-token PORT=8080 ./poltio-mcp-server
 
 The MCP endpoint is available at `http://localhost:8080/mcp`.
 
-All requests must include `Authorization: Bearer <POLTIO_API_TOKEN>` — the server rejects anything that doesn't match.
+In HTTP mode the server uses the single `POLTIO_API_TOKEN` from its own environment for every request — it does **not** read a per-request `Authorization` header. Anyone who can reach the endpoint acts as that token's account, so do not expose it publicly.
 
 ### Publishing to Smithery
 
@@ -41,9 +56,9 @@ All requests must include `Authorization: Bearer <POLTIO_API_TOKEN>` — the ser
 3. Go to [smithery.ai](https://smithery.ai) → Publish → enter your server URL (`https://your-host.com/mcp`).
 4. Users connecting through Smithery must configure `Authorization: Bearer <token>` in the Smithery connection settings.
 
-## Claude Desktop Integration
+## Claude Desktop (manual setup)
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Only needed if you are not using the `poltio.mcpb` bundle above. Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {

@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -117,5 +118,64 @@ func TestPost_NilBody_NoContentType(t *testing.T) {
 	}
 	if gotContentType != "" {
 		t.Errorf("Content-Type should be empty for nil body, got %q", gotContentType)
+	}
+}
+
+// A rejected token gets a 302 to the API root, which answers 200 with a version
+// banner. Following that redirect reports success and the auth failure only
+// surfaces much later as a confusing JSON parse error.
+func TestAuthRedirectIsNotFollowed(t *testing.T) {
+	var rootHits int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/platform/account/profile", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusFound)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		rootHits++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"Poltio API":"v13.2.17"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := client.NewForTest("expired", "1", srv.URL)
+	if _, err := c.GetOrganizations(); !errors.Is(err, client.ErrUnauthorized) {
+		t.Fatalf("want ErrUnauthorized, got %v", err)
+	}
+	if rootHits != 0 {
+		t.Errorf("redirect was followed: root hit %d times", rootHits)
+	}
+}
+
+func TestUnauthorizedStatusMapsToErrUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	c := client.NewForTest("bad", "1", srv.URL)
+	if _, err := c.Get("/platform/content", nil); !errors.Is(err, client.ErrUnauthorized) {
+		t.Fatalf("want ErrUnauthorized, got %v", err)
+	}
+}
+
+// Only redirects to the API root mean "token rejected". Any other redirect must
+// not be reported as an auth failure.
+func TestNonRootRedirectIsNotAnAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://cdn.example.com/report.csv", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := client.NewForTest("tok", "1", srv.URL)
+	_, err := c.Get("/platform/reports/1", nil)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if errors.Is(err, client.ErrUnauthorized) {
+		t.Errorf("non-root redirect misreported as auth failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), "cdn.example.com") {
+		t.Errorf("error should name the redirect target, got %v", err)
 	}
 }

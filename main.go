@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,6 +34,23 @@ type orgEntry struct {
 	ID int `json:"id"`
 }
 
+// activateFirstOrg selects the account's first organization as the active one.
+func activateFirstOrg(c *client.PoltioClient) error {
+	data, err := c.GetOrganizations()
+	if err != nil {
+		return err
+	}
+	var orgs []orgEntry
+	if err := json.Unmarshal(data, &orgs); err != nil {
+		return fmt.Errorf("parse organizations: %w", err)
+	}
+	if len(orgs) == 0 {
+		return errors.New("this account belongs to no organization")
+	}
+	c.SetOrgID(strconv.Itoa(orgs[0].ID))
+	return nil
+}
+
 func main() {
 	token := os.Getenv("POLTIO_API_TOKEN")
 	port := os.Getenv("PORT")
@@ -43,23 +61,12 @@ func main() {
 	c := client.New(token)
 
 	if token != "" {
-		data, err := c.GetOrganizations()
-		if err != nil {
-			if port == "" {
-				log.Fatalf("failed to fetch organizations at startup: %v", err)
-			}
-			log.Printf("warning: failed to fetch organizations at startup: %v", err)
-		} else {
-			var orgs []orgEntry
-			if err := json.Unmarshal(data, &orgs); err != nil {
-				log.Fatalf("failed to parse organizations at startup: %v", err)
-			}
-			if len(orgs) == 0 && port == "" {
-				log.Fatal("no organizations found for this token — ensure your account belongs to at least one organization")
-			}
-			if len(orgs) > 0 {
-				c.SetOrgID(strconv.Itoa(orgs[0].ID))
-			}
+		// Never exit here. A stdio client such as Claude Desktop reports a startup
+		// exit as "write EPIPE / Server disconnected" and discards this log, so the
+		// user is told nothing. Starting anyway lets the first tool call return the
+		// real reason — see client.ErrUnauthorized.
+		if err := activateFirstOrg(c); err != nil {
+			log.Printf("warning: no active organization selected: %v", err)
 		}
 	}
 

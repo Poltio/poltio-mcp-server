@@ -1,0 +1,47 @@
+{
+  "manifest_version": "0.3",
+  "name": "poltio",
+  "display_name": "Poltio",
+  "version": "0.0.0",
+  "description": "Create and manage Poltio polls, quizzes and tests from your AI assistant.",
+  "author": {
+    "name": "Poltio",
+    "url": "https://poltio.com"
+  },
+  "homepage": "https://poltio.com",
+  "documentation": "https://github.com/Poltio/poltio-mcp-server#readme",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/poltio-mcp-server",
+    "mcp_config": {
+      "command": "${__dirname}/server/poltio-mcp-server",
+      "env": {
+        "POLTIO_API_TOKEN": "${user_config.api_token}"
+      },
+      "platform_overrides": {
+        "darwin": {
+          "command": "/bin/sh",
+          "args": ["${__dirname}/server/launch.sh"],
+          "env": {
+            "POLTIO_API_TOKEN": "${user_config.api_token}"
+          }
+        },
+        "win32": {
+          "command": "${__dirname}/server/poltio-mcp-server.exe",
+          "env": {
+            "POLTIO_API_TOKEN": "${user_config.api_token}"
+          }
+        }
+      }
+    }
+  },
+  "user_config": {
+    "api_token": {
+      "type": "string",
+      "title": "Poltio API Token",
+      "description": "Get yours from Poltio → Settings → Tokens",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}
