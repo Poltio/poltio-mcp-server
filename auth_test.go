@@ -288,6 +288,74 @@ func TestIconServedUnauthenticated(t *testing.T) {
 	}
 }
 
+// The public discovery endpoints are reads: a write method must be refused
+// rather than answered with the payload.
+func TestPublicEndpointsRejectWriteMethods(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	for _, path := range []string{iconPath, resourceMetadataPath} {
+		for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Errorf("%s %s = %d, want 405", method, path, w.Code)
+			}
+			if w.Body.Len() > 64 {
+				t.Errorf("%s %s returned a %d-byte body; payload should be withheld",
+					method, path, w.Body.Len())
+			}
+			if allow := w.Header().Get("Allow"); allow == "" {
+				t.Errorf("%s %s: 405 without an Allow header", method, path)
+			}
+		}
+	}
+}
+
+// A preflight must be answered with the CORS contract, not with the payload.
+func TestIconPreflight(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodOptions, iconPath, nil)
+	r.Header.Set("Origin", "https://claude.ai")
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("preflight returned a %d-byte body, want none", w.Body.Len())
+	}
+	if m := w.Header().Get("Access-Control-Allow-Methods"); m == "" {
+		t.Error("preflight missing Access-Control-Allow-Methods")
+	}
+}
+
+// The Etag is what makes conditional requests work; without a 304 every client
+// re-downloads the icon on each revalidation.
+func TestIconConditionalRequest(t *testing.T) {
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, httptest.NewRequest(http.MethodGet, iconPath, nil))
+	etag := first.Header().Get("Etag")
+	if etag == "" {
+		t.Fatal("no Etag on the icon response")
+	}
+
+	second := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, iconPath, nil)
+	r.Header.Set("If-None-Match", etag)
+	h.ServeHTTP(second, r)
+
+	if second.Code != http.StatusNotModified {
+		t.Errorf("If-None-Match got %d, want 304", second.Code)
+	}
+	if second.Body.Len() != 0 {
+		t.Errorf("304 carried a %d-byte body", second.Body.Len())
+	}
+}
+
 // stdio mode has no per-request token; handlers must fall back to the client
 // built from POLTIO_API_TOKEN rather than getting nil.
 func TestClientForCtxFallsBackToBaseClient(t *testing.T) {

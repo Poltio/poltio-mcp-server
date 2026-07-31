@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -28,8 +30,40 @@ const iconPath = "/icon.png"
 //go:embed icon.png
 var iconPNG []byte
 
+// iconETag is derived from the bytes, not from a timestamp: the embedded icon
+// is immutable for the life of the binary, so a content hash stays stable
+// across restarts and is identical on every replica. A startup time would
+// invalidate every cache on each deploy and disagree between pods, making a
+// client see "modified" when nothing changed.
+var iconETag = func() string {
+	sum := sha256.Sum256(iconPNG)
+	return `"` + hex.EncodeToString(sum[:16]) + `"`
+}()
+
 // iconURL is the absolute URL clients fetch the icon from.
 func iconURL() string { return publicURL() + iconPath }
+
+// readOnly answers CORS preflight, limits the endpoint to read methods, and
+// rejects everything else — without it these public endpoints return a body to
+// POST and DELETE, and answer a preflight with the payload itself.
+func readOnly(next http.HandlerFunc) http.HandlerFunc {
+	const allow = "GET, HEAD, OPTIONS"
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		switch r.Method {
+		case http.MethodOptions:
+			w.Header().Set("Access-Control-Allow-Methods", allow)
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodGet, http.MethodHead:
+			next(w, r)
+		default:
+			w.Header().Set("Allow", allow)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
 
 // tokenCtxKey carries the caller's bearer token from the HTTP request into the
 // tool handlers. Absent in stdio mode, where the env token is used instead.
@@ -145,12 +179,7 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 
 	mux := http.NewServeMux()
 
-	metadata := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	metadata := readOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			// The resource identifier is the MCP endpoint itself, not the origin
@@ -160,13 +189,17 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 			"bearer_methods_supported": []string{"header"},
 			"resource_name":            "Poltio",
 		})
-	}
-	mux.HandleFunc(iconPath, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		// ServeContent handles Content-Type, Range, and conditional requests.
-		http.ServeContent(w, r, "icon.png", time.Time{}, bytes.NewReader(iconPNG))
 	})
+
+	mux.HandleFunc(iconPath, readOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Etag", iconETag)
+		// ServeContent sets Content-Type and handles Range plus the conditional
+		// requests (If-None-Match → 304) that the Etag above makes possible.
+		// modtime stays zero: the Etag is the validator, and a fabricated
+		// timestamp would only add a second, less accurate one.
+		http.ServeContent(w, r, "icon.png", time.Time{}, bytes.NewReader(iconPNG))
+	}))
 
 	mux.HandleFunc(resourceMetadataPath, metadata)
 	// RFC 9728 locates the metadata for a resource with a path by appending that
