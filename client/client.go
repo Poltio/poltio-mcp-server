@@ -13,9 +13,10 @@ import (
 	"sync"
 )
 
-// TODO(oauth): temporary — points at staging while the OAuth server is tested.
-// Restore to https://api.poltio.com before tagging a release, since stdio users
-// (Claude Desktop) get this default too and have no env var set.
+// TODO(oauth): staging until the OAuth server ships to production — /oauth/*
+// only exists on api-stage today, so this is what makes the connector work.
+// Anything with no POLTIO_API_BASE_URL set gets this, including the Claude
+// Desktop .mcpb bundle. Switch to https://api.poltio.com once prod has OAuth.
 const defaultBaseURL = "https://api-stage.poltio.com"
 
 // ErrUnauthorized is returned when the API rejects the token. The API answers an

@@ -43,9 +43,24 @@ var iconETag = func() string {
 // iconURL is the absolute URL clients fetch the icon from.
 func iconURL() string { return publicURL() + iconPath }
 
-// readOnly answers CORS preflight, limits the endpoint to read methods, and
-// rejects everything else — without it these public endpoints return a body to
-// POST and DELETE, and answer a preflight with the payload itself.
+// readMethodsOnly limits an endpoint to reads and nothing more. Used for the
+// health endpoints: they are probed by the load balancer and kubelet, never by
+// a browser, so they have no reason to advertise CORS or answer a preflight.
+func readMethodsOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// readOnly is readMethodsOnly plus the CORS contract, for the endpoints a
+// browser-based client genuinely fetches cross-origin (discovery metadata and
+// the icon). Without it those return a body to POST and DELETE, and answer a
+// preflight with the payload itself.
 func readOnly(next http.HandlerFunc) http.HandlerFunc {
 	const allow = "GET, HEAD, OPTIONS"
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +205,22 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 			"resource_name":            "Poltio",
 		})
 	})
+
+	// Load balancer health checks. Before this server had a router every path
+	// answered 200, so the Google Cloud health check passed by accident; adding
+	// the mux made "/" a 404 and the backend went unhealthy ("no healthy
+	// upstream"), even though the pods were Ready on their tcpSocket probe.
+	//
+	// "/{$}" matches the root and nothing else — a bare "/" pattern is a subtree
+	// in ServeMux and would put us back to answering 200 for every unknown path,
+	// which is what hid this problem in the first place.
+	health := readMethodsOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("/{$}", health)
+	mux.HandleFunc("/healthz", health)
 
 	mux.HandleFunc(iconPath, readOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
