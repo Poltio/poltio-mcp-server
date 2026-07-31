@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"time"
 )
 
 // TODO(oauth): staging until the OAuth server ships to production — /oauth/*
@@ -57,6 +58,12 @@ func newClient(token, baseURL string) *PoltioClient {
 		baseURL: baseURL,
 		token:   token,
 		httpClient: &http.Client{
+			// Bound every call. Token validation runs in the HTTP request path,
+			// so an API that hangs rather than refuses would otherwise pile up
+			// requests forever while /healthz still answers 200 — the pod looks
+			// healthy and keeps being sent traffic. Generous enough for the
+			// largest upload the tools accept (2 MiB).
+			Timeout: 30 * time.Second,
 			// Do not follow redirects. A rejected token 302s to the API root, which
 			// answers 200 with a version banner — following it turns an auth failure
 			// into a bogus success that only shows up later as a JSON parse error.

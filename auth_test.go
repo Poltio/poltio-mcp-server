@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -73,16 +74,96 @@ func TestUnauthenticatedMCPReturnsChallenge(t *testing.T) {
 	}
 }
 
+// stubAPI points the client at a fake Poltio API for the duration of a test and
+// forgets any client cached under tok, so tokens can't leak between tests.
+func stubAPI(t *testing.T, tok string, h http.HandlerFunc) {
+	t.Helper()
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Setenv("POLTIO_API_BASE_URL", ts.URL)
+	t.Cleanup(func() {
+		clientsMu.Lock()
+		delete(clients, tok)
+		clientsMu.Unlock()
+	})
+}
+
+// apiAccepts answers the organization lookup that activates a client.
+func apiAccepts(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte(`{"organizations":[{"id":1}]}`))
+}
+
 func TestAuthenticatedMCPPassesThrough(t *testing.T) {
+	const tok = "good-token"
+	stubAPI(t, tok, apiAccepts)
+
 	reached := false
 	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
 
 	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	r.Header.Set("Authorization", "Bearer tok")
+	r.Header.Set("Authorization", "Bearer "+tok)
 	h.ServeHTTP(httptest.NewRecorder(), r)
 
 	if !reached {
 		t.Error("authenticated request did not reach the MCP server")
+	}
+}
+
+// An expired or revoked token has to produce a 401 challenge. If it reaches the
+// MCP server instead, the client sees a successful initialize, never re-runs
+// the OAuth flow, and fails every tool call with an error it cannot act on.
+func TestRejectedTokenGetsChallenge(t *testing.T) {
+	const tok = "expired-token"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	reached := false
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if reached {
+		t.Error("a rejected token reached the MCP server")
+	}
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+	// RFC 6750: a token was presented and rejected, so the challenge says why.
+	auth := w.Header().Get("WWW-Authenticate")
+	if !strings.Contains(auth, `error="invalid_token"`) {
+		t.Errorf("WWW-Authenticate = %q, want an invalid_token error code", auth)
+	}
+	if !strings.Contains(auth, "resource_metadata=") {
+		t.Errorf("WWW-Authenticate = %q, missing resource_metadata", auth)
+	}
+}
+
+// An unreachable API is not an authentication failure. Answering 401 would send
+// the client through the OAuth flow to no effect.
+func TestUpstreamFailureIsNotAChallenge(t *testing.T) {
+	const tok = "api-down-token"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if w.Code == http.StatusUnauthorized {
+		t.Error("an upstream outage was reported as an authentication failure")
+	}
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", w.Code)
+	}
+	if auth := w.Header().Get("WWW-Authenticate"); auth != "" {
+		t.Errorf("upstream outage sent a challenge: %q", auth)
 	}
 }
 
@@ -345,8 +426,9 @@ func TestHealthEndpoints(t *testing.T) {
 
 	// The root must be an exact match. A bare "/" ServeMux pattern is a subtree
 	// and would answer 200 for every unknown path — the behaviour that hid the
-	// health-check breakage until the backend went down.
-	for _, path := range []string{"/nope", "/oauth/authorize", "/mcpx"} {
+	// health-check breakage until the backend went down. "/mcp/foo" is here for
+	// the same reason: the MCP endpoint is two exact paths, not a subtree.
+	for _, path := range []string{"/nope", "/oauth/authorize", "/mcpx", "/mcp/foo"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusNotFound {
