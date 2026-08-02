@@ -3,12 +3,17 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/Poltio/poltio-mcp-server/client"
 )
@@ -73,16 +78,210 @@ func TestUnauthenticatedMCPReturnsChallenge(t *testing.T) {
 	}
 }
 
+// stubAPI points the client at a fake Poltio API for the duration of a test and
+// forgets any client cached under tok, so tokens can't leak between tests.
+func stubAPI(t *testing.T, tok string, h http.HandlerFunc) {
+	t.Helper()
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Setenv("POLTIO_API_BASE_URL", ts.URL)
+	t.Cleanup(func() {
+		clientsMu.Lock()
+		delete(clients, tok)
+		clientsMu.Unlock()
+	})
+}
+
+// apiAccepts answers the organization lookup that activates a client.
+func apiAccepts(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte(`{"organizations":[{"id":1}]}`))
+}
+
 func TestAuthenticatedMCPPassesThrough(t *testing.T) {
+	const tok = "good-token"
+	stubAPI(t, tok, apiAccepts)
+
 	reached := false
 	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
 
 	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	r.Header.Set("Authorization", "Bearer tok")
+	r.Header.Set("Authorization", "Bearer "+tok)
 	h.ServeHTTP(httptest.NewRecorder(), r)
 
 	if !reached {
 		t.Error("authenticated request did not reach the MCP server")
+	}
+}
+
+// An expired or revoked token has to produce a 401 challenge. If it reaches the
+// MCP server instead, the client sees a successful initialize, never re-runs
+// the OAuth flow, and fails every tool call with an error it cannot act on.
+func TestRejectedTokenGetsChallenge(t *testing.T) {
+	const tok = "expired-token"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	reached := false
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if reached {
+		t.Error("a rejected token reached the MCP server")
+	}
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+	// RFC 6750: a token was presented and rejected, so the challenge says why.
+	auth := w.Header().Get("WWW-Authenticate")
+	if !strings.Contains(auth, `error="invalid_token"`) {
+		t.Errorf("WWW-Authenticate = %q, want an invalid_token error code", auth)
+	}
+	if !strings.Contains(auth, "resource_metadata=") {
+		t.Errorf("WWW-Authenticate = %q, missing resource_metadata", auth)
+	}
+}
+
+// An unreachable API is not an authentication failure. Answering 401 would send
+// the client through the OAuth flow to no effect. The upstream detail must stay
+// out of the response — it can carry internal URLs and paths.
+func TestUpstreamFailureIsNotAChallenge(t *testing.T) {
+	const tok = "api-down-token"
+	const secret = "internal-host.svc.cluster.local"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(secret))
+	})
+
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if w.Code == http.StatusUnauthorized {
+		t.Error("an upstream outage was reported as an authentication failure")
+	}
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", w.Code)
+	}
+	if auth := w.Header().Get("WWW-Authenticate"); auth != "" {
+		t.Errorf("upstream outage sent a challenge: %q", auth)
+	}
+	if body := w.Body.String(); strings.Contains(body, secret) {
+		t.Errorf("upstream error text reached the client: %s", body)
+	}
+}
+
+// Tokens expire — every two weeks, for everyone. Once one is cached, the HTTP
+// layer stops re-validating it, so a tool call failing with ErrUnauthorized is
+// the only signal left that it died. If that does not evict the cache entry,
+// every later call fails identically until the pod restarts and the client is
+// never told to re-authenticate.
+func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
+	const tok = "expires-mid-session"
+	stubAPI(t, tok, apiAccepts)
+
+	// Prime the cache the way a first successful request would.
+	if _, err := clientForToken(tok); err != nil {
+		t.Fatalf("priming the cache: %v", err)
+	}
+	clientsMu.Lock()
+	_, cached := clients[tok]
+	clientsMu.Unlock()
+	if !cached {
+		t.Fatal("token was not cached, test proves nothing")
+	}
+
+	// The token dies upstream; the next tool call surfaces it wrapped, exactly
+	// as the tools package does with %w.
+	handler := withAuth(func(*client.PoltioClient) toolHandler {
+		return func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, fmt.Errorf("list_content: %w", client.ErrUnauthorized)
+		}
+	})
+
+	ctx := context.WithValue(context.Background(), tokenCtxKey{}, tok)
+	_, err := handler(ctx, mcp.CallToolRequest{})
+	if err == nil {
+		t.Fatal("expected the handler error to propagate")
+	}
+	// Identity, not message text: this asserts the OAuth substitution happened.
+	// What that message must say is pinned in TestReauthMessageSuitsOAuthCallers.
+	if !errors.Is(err, errReauthNeeded) {
+		t.Errorf("OAuth caller did not get the reconnect error: %v", err)
+	}
+
+	clientsMu.Lock()
+	_, still := clients[tok]
+	clientsMu.Unlock()
+	if still {
+		t.Error("expired token still cached; the next request will skip validation and never get a 401")
+	}
+}
+
+// stdio has no connector to reconnect and no per-request token — the sentinel's
+// env-var advice is exactly right there, so the OAuth rewrite must not apply.
+func TestStdioKeepsEnvVarAdvice(t *testing.T) {
+	handler := withAuth(func(*client.PoltioClient) toolHandler {
+		return func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, fmt.Errorf("list_content: %w", client.ErrUnauthorized)
+		}
+	})
+
+	// No token in context is what stdio mode looks like.
+	_, err := handler(context.Background(), mcp.CallToolRequest{})
+	if err == nil {
+		t.Fatal("expected the handler error to propagate")
+	}
+	if errors.Is(err, errReauthNeeded) {
+		t.Errorf("stdio got the OAuth substitution: %v", err)
+	}
+	if !errors.Is(err, client.ErrUnauthorized) {
+		t.Errorf("stdio lost the original error: %v", err)
+	}
+}
+
+// The substitution is only worth making if the replacement message is actually
+// useful to an OAuth caller. Asserted once, here, rather than in every test
+// that happens to trigger it.
+func TestReauthMessageSuitsOAuthCallers(t *testing.T) {
+	msg := errReauthNeeded.Error()
+	// The whole reason this error exists: a connector user has no env var and
+	// no client-settings token to edit.
+	if strings.Contains(msg, "POLTIO_API_TOKEN") {
+		t.Errorf("reconnect message repeats stdio advice: %s", msg)
+	}
+	if !strings.Contains(msg, "reconnect") {
+		t.Errorf("reconnect message does not say to reconnect: %s", msg)
+	}
+}
+
+// A valid token on an account with no organization is a permanent, user-fixable
+// state — not an outage. 503 would invite retries that cannot succeed and can
+// read as a service failure to whatever is watching.
+func TestNoOrganizationIsForbidden(t *testing.T) {
+	const tok = "orgless-token"
+	stubAPI(t, tok, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"organizations":[]}`))
+	})
+
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", w.Code)
+	}
+	// Actionable by the user, so this one is worth telling them.
+	if body := w.Body.String(); !strings.Contains(body, "no organization") {
+		t.Errorf("403 body does not say what to fix: %s", body)
 	}
 }
 
@@ -345,8 +544,9 @@ func TestHealthEndpoints(t *testing.T) {
 
 	// The root must be an exact match. A bare "/" ServeMux pattern is a subtree
 	// and would answer 200 for every unknown path — the behaviour that hid the
-	// health-check breakage until the backend went down.
-	for _, path := range []string{"/nope", "/oauth/authorize", "/mcpx"} {
+	// health-check breakage until the backend went down. "/mcp/foo" is here for
+	// the same reason: the MCP endpoint is two exact paths, not a subtree.
+	for _, path := range []string{"/nope", "/oauth/authorize", "/mcpx", "/mcp/foo"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusNotFound {

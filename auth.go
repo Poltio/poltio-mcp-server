@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -134,7 +135,27 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 	if tok == "" {
 		return baseClient, nil
 	}
+	c, err := clientForToken(tok)
+	if err != nil {
+		if errors.Is(err, client.ErrUnauthorized) {
+			return nil, errReauthNeeded
+		}
+		return nil, err
+	}
+	return c, nil
+}
 
+// errReauthNeeded replaces client.ErrUnauthorized for callers that authenticated
+// through the connector flow. The sentinel's own text tells the user to edit
+// POLTIO_API_TOKEN and their MCP client settings, which is right for stdio and
+// useless over OAuth — there is no env var to fix, only a connector to reconnect.
+var errReauthNeeded = errors.New("your Poltio authorization is invalid or has expired — reconnect the Poltio connector to sign in again")
+
+// clientForToken resolves and caches the client for one bearer token. The first
+// call for a token hits the API to select an organization, which doubles as
+// proof the token is good — errors wrap client.ErrUnauthorized so callers can
+// tell a rejected token from an unreachable API.
+func clientForToken(tok string) (*client.PoltioClient, error) {
 	clientsMu.Lock()
 	c, ok := clients[tok]
 	clientsMu.Unlock()
@@ -147,12 +168,7 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 	c = client.New(tok)
 	if err := activateFirstOrg(c); err != nil {
 		// Surface the real reason (bad token, no organization) instead of
-		// caching a client whose every call would fail confusingly. The
-		// client.ErrUnauthorized text tells stdio users to edit an env var,
-		// which an OAuth caller cannot do.
-		if errors.Is(err, client.ErrUnauthorized) {
-			return nil, errors.New("your Poltio authorization is invalid or has expired — reconnect the Poltio connector to sign in again")
-		}
+		// caching a client whose every call would fail confusingly.
 		return nil, err
 	}
 
@@ -182,8 +198,30 @@ func withAuth[T any](newHandler func(T) toolHandler) toolHandler {
 		if err != nil {
 			return nil, err
 		}
-		return newHandler(any(c).(T))(ctx, req)
+
+		res, err := newHandler(any(c).(T))(ctx, req)
+		if tok, _ := ctx.Value(tokenCtxKey{}).(string); tok != "" && errors.Is(err, client.ErrUnauthorized) {
+			// The token passed validation when it was cached and has since
+			// expired or been revoked — which every token does, since they last
+			// two weeks. Drop it so the next request misses the cache,
+			// re-validates, and gets the 401 challenge that restarts the OAuth
+			// flow. Without this the connector fails every call until the pod
+			// restarts, with nothing telling the client to re-authenticate.
+			evictToken(tok)
+			// Same substitution clientForCtx makes: this caller has no env var
+			// to fix. Only rewritten in OAuth mode — a stdio user genuinely does
+			// need the sentinel's advice.
+			return nil, errReauthNeeded
+		}
+		return res, err
 	}
+}
+
+// evictToken forgets the cached client for a token.
+func evictToken(tok string) {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	delete(clients, tok)
 }
 
 // oauthHandler wraps the MCP endpoint with the two pieces an MCP client needs
@@ -245,30 +283,93 @@ func oauthHandler(mcpServer http.Handler) http.Handler {
 
 	// Both patterns: ServeMux treats "/mcp" and "/mcp/" as distinct, and a
 	// client that normalises the trailing slash would otherwise get a 404
-	// instead of the authentication challenge.
+	// instead of the authentication challenge. {$} anchors the slashed form to
+	// that exact path — as a bare subtree it would also answer for /mcp/anything,
+	// which is not an endpoint this server serves.
 	guarded := requireBearer(mcpServer, metadataURL)
 	mux.Handle("/mcp", guarded)
-	mux.Handle("/mcp/", guarded)
+	mux.Handle("/mcp/{$}", guarded)
 
 	return mux
 }
 
-// requireBearer rejects unauthenticated MCP requests with the challenge that
-// starts the OAuth flow. Preflight requests pass through to the CORS handling
-// already built into the MCP server.
+// requireBearer rejects MCP requests whose token is missing or rejected by the
+// Poltio API, with the challenge that starts the OAuth flow. Preflight requests
+// pass through to the CORS handling already built into the MCP server.
+//
+// Validating here rather than in the tool handlers is what lets an expired
+// token produce a 401: a client that only ever sees a successful initialize has
+// no reason to re-run the OAuth flow, and would instead fail every tool call
+// with an error it cannot act on.
 func requireBearer(next http.Handler, metadataURL string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || bearerToken(r) != "" {
+		if r.Method == http.MethodOptions {
 			next.ServeHTTP(w, r)
 			return
 		}
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`"`)
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "unauthorized",
-			"error_description": "Authenticate with Poltio to use this MCP server.",
-		})
+
+		tok := bearerToken(r)
+		if tok == "" {
+			// No error code: RFC 6750 says not to send one when the request
+			// carried no credentials at all.
+			challenge(w, metadataURL, "", "Authenticate with Poltio to use this MCP server.")
+			return
+		}
+
+		// Resolves from the per-token cache after the first request, so this
+		// costs one API call per new token rather than one per request. A token
+		// that dies mid-session passes here until a tool call fails and evicts
+		// it (see withAuth); the request after that re-validates and 401s.
+		if _, err := clientForToken(tok); err != nil {
+			if errors.Is(err, client.ErrUnauthorized) {
+				challenge(w, metadataURL, "invalid_token", "Your Poltio authorization is invalid or has expired.")
+				return
+			}
+			// The token is good but the account cannot use the server. Permanent
+			// until the user acts, so 403 — a 503 invites retries that cannot
+			// succeed, and can make health tooling read this as an outage.
+			if errors.Is(err, errNoOrganization) {
+				writeErr(w, http.StatusForbidden, "forbidden", err.Error())
+				return
+			}
+			// Anything else is upstream: unreachable API, unparseable response.
+			// Retryable, so 503 — but the detail stays in the log rather than
+			// going to the caller, since it can carry internal URLs and paths.
+			log.Printf("token validation failed: %v", err)
+			writeErr(w, http.StatusServiceUnavailable, "server_error",
+				"Poltio is temporarily unavailable. Try again shortly.")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// writeErr sends a JSON error body. Descriptions are written for the end user;
+// upstream error text belongs in the log, not in a response.
+func writeErr(w http.ResponseWriter, status int, code, description string) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             code,
+		"error_description": description,
+	})
+}
+
+// challenge writes the 401 that tells an MCP client where to authenticate.
+// errCode is the RFC 6750 code, omitted when the request carried no token.
+func challenge(w http.ResponseWriter, metadataURL, errCode, description string) {
+	auth := `Bearer `
+	if errCode != "" {
+		auth += `error="` + errCode + `", `
+	}
+	w.Header().Set("WWW-Authenticate", auth+`resource_metadata="`+metadataURL+`"`)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             "unauthorized",
+		"error_description": description,
 	})
 }
