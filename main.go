@@ -123,7 +123,7 @@ Pick the type that matches the experience:
 
 After creating, use add_question / add_answer / add_result to build it out. Workflow: create_content → add_question(s) → add_answer(s) → add_result(s) (always add at least one default result) → publish_content.
 
-The content's public link is always https://www.poltio.com/widget/{public_id} — when sharing or viewing content, use only this URL, never any other link.`),
+Public contents are accessible via https://www.poltio.com/widget/{public_id} — generate the link with this formula when the user asks to see their public content.`),
 		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. Note: 'set' backs three dashboard presets — Survey (plain set), Calculator/Product Finder (set + is_calculator), and Searchable Product Finder (set + is_searchable)."), mcp.Required()),
 		mcp.WithString("title", mcp.Description("End-user facing title"), mcp.Required()),
 		mcp.WithString("desc", mcp.Description("Cover screen description (optional)")),
@@ -181,7 +181,7 @@ The content's public link is always https://www.poltio.com/widget/{public_id} �
 
 	s.AddTool(mcp.NewTool(
 		"publish_content",
-		mcp.WithDescription("Publish a draft Poltio content item, making it publicly accessible at https://www.poltio.com/widget/{public_id} (always use this URL as the public link, never any other)."),
+		mcp.WithDescription("Publish a draft Poltio content item, making it publicly accessible at https://www.poltio.com/widget/{public_id}."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 	), withAuth(tools.PublishContent))
 

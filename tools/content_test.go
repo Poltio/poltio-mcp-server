@@ -187,8 +187,8 @@ func TestCreateContent_AppendsPublicLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := res.Content[0].(mcp.TextContent).Text
-	if !strings.Contains(text, "https://www.poltio.com/widget/new1") {
-		t.Errorf("expected public link in result, got %q", text)
+	if !strings.Contains(text, "https://www.poltio.com/widget/{public_id}") {
+		t.Errorf("expected public link note in result, got %q", text)
 	}
 }
 
@@ -204,8 +204,8 @@ func TestGetContent_AppendsPublicLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := res.Content[0].(mcp.TextContent).Text
-	if !strings.Contains(text, "https://www.poltio.com/widget/abc123") {
-		t.Errorf("expected public link in result, got %q", text)
+	if !strings.Contains(text, "https://www.poltio.com/widget/{public_id}") {
+		t.Errorf("expected public link note in result, got %q", text)
 	}
 }
 
