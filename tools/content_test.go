@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -168,6 +169,43 @@ func TestCreateContent_PostsToCorrectPath(t *testing.T) {
 	}
 	if gotPath != "/platform/content" {
 		t.Errorf("path: want /platform/content, got %q", gotPath)
+	}
+}
+
+func TestCreateContent_AppendsPublicLink(t *testing.T) {
+	mock := &mockClient{
+		postFunc: func(path string, body any) ([]byte, error) {
+			return []byte(`{"public_id":"new1"}`), nil
+		},
+	}
+	handler := tools.CreateContent(mock)
+	res, err := handler(context.Background(), callRequest(map[string]any{
+		"type":  "poll",
+		"title": "My Poll",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := res.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "https://www.poltio.com/widget/new1") {
+		t.Errorf("expected public link in result, got %q", text)
+	}
+}
+
+func TestGetContent_AppendsPublicLink(t *testing.T) {
+	mock := &mockClient{
+		getFunc: func(path string, query url.Values) ([]byte, error) {
+			return []byte(`{"content":{}}`), nil
+		},
+	}
+	handler := tools.GetContent(mock)
+	res, err := handler(context.Background(), callRequest(map[string]any{"public_id": "abc123"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := res.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "https://www.poltio.com/widget/abc123") {
+		t.Errorf("expected public link in result, got %q", text)
 	}
 }
 
