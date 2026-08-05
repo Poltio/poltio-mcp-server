@@ -121,7 +121,9 @@ Pick the type that matches the experience:
 - test: a personality/outcome test. Answers carry points (set_answer_result_point) that add up to a matching result screen chosen by its min_c–max_c score range.
 - this-that: a single "This or That" question. Only one question is allowed and the answer count should be a power of 2 (2, 4, 8, ...).
 
-After creating, use add_question / add_answer / add_result to build it out. Workflow: create_content → add_question(s) → add_answer(s) → add_result(s) (always add at least one default result) → publish_content.`),
+After creating, use add_question / add_answer / add_result to build it out. Workflow: create_content → add_question(s) → add_answer(s) → add_result(s) (always add at least one default result) → publish_content.
+
+The content's public link is always https://www.poltio.com/widget/{public_id} — when sharing or viewing content, use only this URL, never any other link.`),
 		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. Note: 'set' backs three dashboard presets — Survey (plain set), Calculator/Product Finder (set + is_calculator), and Searchable Product Finder (set + is_searchable)."), mcp.Required()),
 		mcp.WithString("title", mcp.Description("End-user facing title"), mcp.Required()),
 		mcp.WithString("desc", mcp.Description("Cover screen description (optional)")),
@@ -179,7 +181,7 @@ After creating, use add_question / add_answer / add_result to build it out. Work
 
 	s.AddTool(mcp.NewTool(
 		"publish_content",
-		mcp.WithDescription("Publish a draft Poltio content item, making it publicly accessible."),
+		mcp.WithDescription("Publish a draft Poltio content item, making it publicly accessible at https://www.poltio.com/widget/{public_id} (always use this URL as the public link, never any other)."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 	), withAuth(tools.PublishContent))
 
