@@ -20,39 +20,10 @@ type ContentClient interface {
 	Delete(path string) ([]byte, error)
 }
 
-// The canonical public URL for a content item. Clients must always share/view
-// content at this URL — never any other link found in API responses.
-const publicLinkNote = "\n\nPublic link: https://www.poltio.com/widget/%s — always use this URL to share or view this content, never any other link."
-
-const listPublicLinkNote = "\n\nPublic link for any content: https://www.poltio.com/widget/{public_id} — always use this URL to share or view content, never any other link."
-
-// withPublicLink wraps a content API response, appending the canonical public
-// link. If publicID is empty it is extracted from the response body.
-func withPublicLink(data []byte, publicID string) *mcp.CallToolResult {
-	if publicID == "" {
-		var r struct {
-			PublicID string `json:"public_id"`
-			Data     struct {
-				PublicID string `json:"public_id"`
-			} `json:"data"`
-			Content struct {
-				PublicID string `json:"public_id"`
-			} `json:"content"`
-		}
-		_ = json.Unmarshal(data, &r)
-		publicID = r.PublicID
-		if publicID == "" {
-			publicID = r.Data.PublicID
-		}
-		if publicID == "" {
-			publicID = r.Content.PublicID
-		}
-	}
-	if publicID == "" {
-		return mcp.NewToolResultText(string(data))
-	}
-	return mcp.NewToolResultText(string(data) + fmt.Sprintf(publicLinkNote, publicID))
-}
+// Informational note appended to content tool results. Kept deliberately
+// neutral/descriptive — imperative wording here reads as prompt injection to
+// LLM clients.
+const publicLinkNote = "\n\nNote: public contents are accessible via https://www.poltio.com/widget/{public_id} — you can generate the link with this formula when the user asks to see their public content."
 
 func ListContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -79,7 +50,7 @@ func ListContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil {
 			return nil, fmt.Errorf("list_content: %w", err)
 		}
-		return mcp.NewToolResultText(string(data) + listPublicLinkNote), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -93,7 +64,7 @@ func GetContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		if err != nil {
 			return nil, fmt.Errorf("get_content: %w", err)
 		}
-		return withPublicLink(data, publicID), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -221,7 +192,7 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if err != nil {
 			return nil, fmt.Errorf("create_content: %w", err)
 		}
-		return withPublicLink(data, ""), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -235,7 +206,7 @@ func PublishContent(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		if err != nil {
 			return nil, fmt.Errorf("publish_content: %w", err)
 		}
-		return withPublicLink(data, publicID), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -264,7 +235,7 @@ func ListDrafts(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mc
 		if err != nil {
 			return nil, fmt.Errorf("list_drafts: %w", err)
 		}
-		return mcp.NewToolResultText(string(data) + listPublicLinkNote), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -419,7 +390,7 @@ func DuplicateContent(c ContentClient) func(context.Context, mcp.CallToolRequest
 		if err != nil {
 			return nil, fmt.Errorf("duplicate_content: %w", err)
 		}
-		return withPublicLink(data, ""), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
@@ -519,7 +490,7 @@ func UseTemplate(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil {
 			return nil, fmt.Errorf("use_template: %w", err)
 		}
-		return withPublicLink(data, ""), nil
+		return mcp.NewToolResultText(string(data) + publicLinkNote), nil
 	}
 }
 
