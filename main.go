@@ -1663,6 +1663,11 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 			server.WithEndpointPath("/mcp"),
 			server.WithStreamableHTTPCORS(server.WithCORSAllowedOrigins("*")),
 			server.WithHTTPContextFunc(withBearer),
+			// No server-initiated notifications are ever sent, so the standalone
+			// GET SSE stream would stay open in silence until the front end cuts
+			// it — Go-SDK clients then fail with "exceeded 5 retries without
+			// progress". 405 per spec tells them not to open it at all.
+			server.WithDisableStreaming(true),
 			// Without a TTL the sweeper never runs and session state is kept for
 			// the life of the process. Clients do not always send the DELETE that
 			// releases it — a dropped connection skips it, and so does a client
