@@ -23,6 +23,10 @@ type ContentClient interface {
 // Informational note appended to content tool results. Kept deliberately
 // neutral/descriptive — imperative wording here reads as prompt injection to
 // LLM clients.
+// currentDesign is the widget design new content is created on. The panel's
+// editor starts new content on it, so content made through MCP matches.
+const currentDesign = "2026-01"
+
 const publicLinkNote = "\n\nNote: public contents are accessible via https://www.poltio.com/widget/{public_id} — you can generate the link with this formula when the user asks to see their public content."
 
 func ListContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -181,13 +185,21 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 				body["attributes"] = attrs
 			}
 		}
+		opts := map[string]any{}
 		if v := req.GetString("options_json", ""); v != "" {
-			var opts map[string]any
 			if err := json.Unmarshal([]byte(v), &opts); err != nil {
 				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
 			}
-			body["options"] = opts
+			if opts == nil { // options_json was the literal "null"
+				opts = map[string]any{}
+			}
 		}
+		// New content starts on the current design, as the panel's editor does.
+		// An explicit design (including "") is the caller's choice and is kept.
+		if _, ok := opts["design"]; !ok {
+			opts["design"] = currentDesign
+		}
+		body["options"] = opts
 		data, err := c.Post("/platform/content", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_content: %w", err)

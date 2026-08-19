@@ -170,7 +170,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 - redirect (string URL): redirect the widget page to this URL.
 - keywords (string): meta keywords for the widget page.`)),
 		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object. Fields:
-- design (string): widget design version — "" (empty, legacy 2025 design) or "2026-01" (new vertical-image design; enables the options below).
+- design (string): widget design — "2026-01" (the current vertical-image design, enabling the options below) or "" (empty, the legacy 2025 design). Defaults to "2026-01", as the panel's editor does for new content; pass "" only to deliberately create content on the legacy design.
 - result_background_blur ("on"/"off"): blur the background image behind result cards (2026 design only).
 - share ("off"/""): set "off" to hide the share button (2026 design only).
 - list_bullet_points ("true"/""): render result descriptions as bullet points (searchable content, 2026 design only).
@@ -246,7 +246,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 - canonical (string URL): add a canonical rel tag to the widget page.
 - redirect (string URL): redirect the widget page to this URL.
 - keywords (string): meta keywords for the widget page.`)),
-		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object. See create_content options_json for the field list (design, result_background_blur, share, list_bullet_points, bundle_title, result_button_placement, hide_result_session_id).`)),
+		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object, replacing the stored one wholesale — send every option you want to keep, not just the changed one. See create_content options_json for the field list (design, result_background_blur, share, list_bullet_points, bundle_title, result_button_placement, hide_result_session_id). Unlike create_content this applies no design default: existing content keeps the design it has unless you set one.`)),
 	), withAuth(tools.UpdateContent))
 
 	s.AddTool(mcp.NewTool(
@@ -1260,22 +1260,24 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 	// ── Data Sources ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_data_sources",
-		mcp.WithDescription("List the product/catalog data sources connected to this account, with each one's pipeline status (e.g. waiting for approval, in review, processing, up to date, or failed). Data sources are product feeds (e.g. a Shopify catalog) that power Searchable Product Finder content — their items become the results users are matched to."),
+		mcp.WithDescription("List the Sources (data sources) connected to this account. A Source connects your products or services to Poltio in XML, JSON or CSV format so they can be used as AI recommendations. Each row carries a status: draft (submitted, waiting for approval), review (in review), pending (waiting for processing), processing (being imported), synced (up to date with no errors), failed (failed while importing), rejected or removed."),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.ListDataSources))
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
-		mcp.WithDescription("Submit a product/catalog feed URL (e.g. a Shopify XML or JSON feed) as a data source. After creation, configure it with set_data_source_elements and start the import with publish_data_source; once imported, its items can be served as results in Searchable Product Finder content. For a CSV file use create_csv_data_source instead. For an XML feed prefer create_xml_data_source: type xml here currently imports 0 items because the item path cannot be configured via the API."),
-		mcp.WithString("name", mcp.Description("Human-readable name"), mcp.Required()),
+		mcp.WithDescription("Add a new Source from a feed URL (e.g. a Shopify XML or JSON feed) — step 1 of the panel's flow. Poltio then works out which fields the feed carries: read them with get_data_source_attributes (step 2), match them to attributes that can be used for product recommendations with set_data_source_elements (step 3), then save the mappings and start importing the products with publish_data_source (step 4). Once the products are in, build a Product Finder on top with create_product_finder (step 5). For a CSV file use create_csv_data_source instead."),
+		mcp.WithString("name", mcp.Description("Human-readable name (min 3 characters)"), mcp.Required()),
 		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
 		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
-		mcp.WithString("notes", mcp.Description("Optional notes for the review team")),
+		mcp.WithString("items_path", mcp.Description("For xml/json feeds: the repeating item node or path, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds. Without it an xml feed can import 0 items.")),
+		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with, when the origin blocks the default one")),
+		mcp.WithString("notes", mcp.Description("Optional notes stored with the data source")),
 	), withAuth(tools.CreateDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"create_csv_data_source",
-		mcp.WithDescription("Create a data source from a CSV file in one step (multipart upload, as the dashboard does). The record is created as type 'csv' so its columns can be inspected with get_data_source_attributes and mapped with set_data_source_elements, then imported with publish_data_source."),
+		mcp.WithDescription("Add a new Source by uploading a CSV file, the panel's \"Upload CSV File\" option. The record is created as type 'csv'; read its columns with get_data_source_attributes, match them with set_data_source_elements, then save and start the import with publish_data_source."),
 		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename, defaults to data.csv")),
@@ -1283,68 +1285,227 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_xml_data_source",
-		mcp.WithDescription("Create a data source from a remote XML feed by fetching it, flattening each item node one level deep and importing it through the CSV pipeline. Use this instead of create_data_source with type xml (which currently imports 0 items because the item path cannot be configured via the API). The import is a snapshot: it does not auto-sync with the feed; to refresh, delete and recreate. After creation, map columns with set_data_source_elements and run publish_data_source."),
+		mcp.WithDescription("Add a new Source from a remote XML feed, with the repeating item node set explicitly. A convenience wrapper over create_data_source with type xml — the importer reads the feed itself, so the Source stays in sync. Continue with get_data_source_attributes, set_data_source_elements and publish_data_source."),
 		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
 		mcp.WithString("feed_url", mcp.Description("Fully qualified URL of the XML feed"), mcp.Required()),
 		mcp.WithString("items_path", mcp.Description("Name of the repeating item node, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds"), mcp.Required()),
+		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with, when the origin blocks the default one")),
 	), withAuth(tools.CreateXMLDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"get_data_source",
-		mcp.WithDescription("Get a single data source with its status and configured element mappings (data_source_item_elements)."),
+		mcp.WithDescription("Get one Source with its status, notes, saved attribute mappings (elements / data_source_item_elements) and the cached feed analysis (analysis, analysis_status)."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"get_data_source_attributes",
-		mcp.WithDescription("Discover the columns/fields found in an uploaded or submitted data source feed, with example values per column. Use this before set_data_source_elements to see what can be mapped."),
+		mcp.WithDescription("Read the attributes/columns Poltio found in a Source's feed, with example values, suggested mappings and the number of products detected — step 2 of the flow, the panel's \"we were able to import fields from your source\". Poltio works out which fields the feed carries in the background: while it is still doing that this answers {\"status\":\"processing\"} — wait about 2 minutes and call again. Feed changed since? Use refresh_data_source_format."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetDataSourceAttributes))
 
 	s.AddTool(mcp.NewTool(
 		"set_data_source_elements",
-		mcp.WithDescription("Map a data source's feed columns to Poltio element types — the configuration step required before publish_data_source. The 'id', 'name', 'url' and 'image' types are mandatory for publishing; unmapped extra columns can be included as 'generic' to keep them as attributes."),
+		mcp.WithDescription("Match a Source's attributes/columns to the roles Poltio uses for product recommendations — step 3, and it must be done before publish_data_source: save the mappings first, then queue the import. The mandatory roles are 'id', 'name', 'url' and 'image'; the importer rejects a Source without them. Extra columns worth keeping can go in as 'generic'. Each mapping is saved with its own request, so a partial result is reported rather than losing the ones that worked. Adjust one afterwards with update_data_source_element, or drop it with delete_data_source_element."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
-		mcp.WithString("elements_json", mcp.Description("JSON array of {\"element\": \"<column name from get_data_source_attributes>\", \"type\": \"<element type>\"}. Types: generic, id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type. Example: [{\"element\":\"id\",\"type\":\"id\"},{\"element\":\"title\",\"type\":\"name\"},{\"element\":\"url\",\"type\":\"url\"},{\"element\":\"image\",\"type\":\"image\"},{\"element\":\"price\",\"type\":\"price\"}]"), mcp.Required()),
+		mcp.WithString("elements_json", mcp.Description("JSON array of {\"element\": \"<column path from get_data_source_attributes>\", \"type\": \"<element type>\"}. Types: generic, id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type. Optional per element: slug, namespace (prefix a flat feed groups keys under, e.g. 'g' for g_title), and for one branch of a repeating node is_array, array_first_level, array_first_path, array_first_key. Example: [{\"element\":\"id\",\"type\":\"id\"},{\"element\":\"title\",\"type\":\"name\"},{\"element\":\"url\",\"type\":\"url\"},{\"element\":\"image\",\"type\":\"image\"},{\"element\":\"price\",\"type\":\"price\"}]"), mcp.Required()),
 	), withAuth(tools.SetDataSourceElements))
 
 	s.AddTool(mcp.NewTool(
 		"publish_data_source",
-		mcp.WithDescription("Publish a configured data source so its import pipeline starts and its items become available as Searchable Product Finder results. Requires element mappings set first via set_data_source_elements — publishing without an 'id'-typed element is rejected (\"You can not publish a data source without id element\"). Check progress with list_data_sources or get_data_source_items."),
+		mcp.WithDescription("Start importing the Source's products — step 4, the panel's \"save the fields and start importing the products\" (the API's mark-ready). Save the mappings with set_data_source_elements first: the importer rejects a Source without the mandatory 'id', 'name', 'image' and 'url' roles, and answers with the ones still needed in missing_elements. A Source already importing is not an error — it is already in the state you wanted. Watch it reach status 'synced' with list_data_sources, and check the products landed with get_data_source_items."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID (from list_data_sources or create_data_source)"), mcp.Required()),
 	), withAuth(tools.PublishDataSource))
 
 	s.AddTool(mcp.NewTool(
 		"get_data_source_items",
-		mcp.WithDescription("Get paginated imported items of a published data source, to verify the import worked."),
+		mcp.WithDescription("Get a Source's imported products — the panel's Source Product List — to check the import worked. Fixed at 25 products per page."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
-		mcp.WithNumber("per_page", mcp.Description("Results per page")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetDataSourceItems))
 
 	s.AddTool(mcp.NewTool(
 		"delete_data_source",
-		mcp.WithDescription("Remove a data source submission."),
+		mcp.WithDescription("Delete a Source. Any Product Finder built on it stops being fed."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		destructive(),
 	), withAuth(tools.DeleteDataSource))
 
 	s.AddTool(mcp.NewTool(
-		"add_data_source_note",
-		mcp.WithDescription("Add a note to a data source request (for communication with the review team)."),
+		"update_data_source",
+		mcp.WithDescription("Rename a Source, or point it at a different feed. Changing type, source or items_path re-reads the feed and rebuilds the field list, so read it again with get_data_source_attributes afterwards."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
-		mcp.WithString("notes", mcp.Description("Note text"), mcp.Required()),
-	), withAuth(tools.AddDataSourceNote))
+		mcp.WithString("name", mcp.Description("New name (min 3 characters)")),
+		mcp.WithString("type", mcp.Description("Feed format: xml, json or csv")),
+		mcp.WithString("source", mcp.Description("New fully qualified feed URL")),
+		mcp.WithString("items_path", mcp.Description("Repeating item node or path within the feed")),
+		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with")),
+	), withAuth(tools.UpdateDataSource))
+
+	s.AddTool(mcp.NewTool(
+		"refresh_data_source_format",
+		mcp.WithDescription("Re-read the feed and rebuild the field list, discarding what was worked out before. Answers immediately with {\"status\":\"processing\"}; read the rebuilt list with get_data_source_attributes in about 2 minutes."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+	), withAuth(tools.RefreshDataSourceFormat))
+
+	s.AddTool(mcp.NewTool(
+		"get_data_source_elements",
+		mcp.WithDescription("List the attribute mappings saved on a Source, with their ids and slugs. The ids are what update_data_source_element, delete_data_source_element and a Product Finder's 'element' (Source Element) parameter refer to. The slugs are what result templates address products by, as {item.<slug>}."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetDataSourceElements))
+
+	s.AddTool(mcp.NewTool(
+		"update_data_source_element",
+		mcp.WithDescription("Change one saved attribute mapping, typically to give a column a different role."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+		mcp.WithNumber("element_id", mcp.Description("Element ID from get_data_source_elements"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("Role: generic, id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type")),
+		mcp.WithString("element", mcp.Description("Attribute/column path in the feed")),
+		mcp.WithString("slug", mcp.Description("Slug the element is addressed by")),
+		mcp.WithString("namespace", mcp.Description("Namespace prefix the feed groups this key under")),
+	), withAuth(tools.UpdateDataSourceElement))
+
+	s.AddTool(mcp.NewTool(
+		"delete_data_source_element",
+		mcp.WithDescription("Remove an attribute mapping from a Source. Dropping one of the mandatory roles (id, name, image, url) blocks the next publish_data_source."),
+		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
+		mcp.WithNumber("element_id", mcp.Description("Element ID from get_data_source_elements"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteDataSourceElement))
 
 	s.AddTool(mcp.NewTool(
 		"upload_data_source",
-		mcp.WithDescription("Upload a file (JSON, XML, CSV, or TXT) as a new data source."),
+		mcp.WithDescription("Upload a file (JSON, XML, CSV, or TXT) as a new Source."),
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded file content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename with extension, e.g. feed.json, data.csv"), mcp.Required()),
 	), withAuth(tools.UploadDataSource))
+
+	// ── Product Finders (data source contents) ────────────────────────────────
+	s.AddTool(mcp.NewTool(
+		"list_product_finders",
+		mcp.WithDescription("List the Product Finders in this account. A Product Finder (data source content, DSC) connects a Source to a content and controls how the matching products are displayed, filtered and tracked. Each row carries the content it binds, including its public_id."),
+		mcp.WithNumber("page", mcp.Description("Page number")),
+		mcp.WithNumber("per_page", mcp.Description("Rows per page of this listing, 1-100 (default 25) — unrelated to a finder's own per_page setting")),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.ListProductFinders))
+
+	s.AddTool(mcp.NewTool(
+		"get_product_finder",
+		mcp.WithDescription("Get one Product Finder with the content it binds and its Searchable Fields."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetProductFinder))
+
+	s.AddTool(mcp.NewTool(
+		"create_product_finder",
+		mcp.WithDescription("Create a Product Finder — step 5, the panel's \"name the product finder and create it\". Pick a Source and give the finder a name; the rest can be configured afterwards. Leave content_id empty and a new content is created for it, with the products going in as results in the background — rename that content with update_content later. That content is generated by the API, which applies no display options, so it starts on the legacy design: read its public_id with get_product_finder and set options_json {\"design\":\"2026-01\"} via update_content to put it on the current one. Import the Source first (publish_data_source), then define what is searchable with add_product_finder_field. Result Card templates address a product's values as {item.<slug>}, using the slugs from get_data_source_elements — e.g. \"{item.name} - {item.brand}\"; those are the saved mapping's slugs, not the raw feed column names. A product whose title or URL comes out empty is dropped from the results. The response carries the numeric content_id but not the content's public_id — read that with get_product_finder."),
+		mcp.WithString("name", mcp.Description("Name of the Product Finder"), mcp.Required()),
+		mcp.WithNumber("data_source_id", mcp.Description("ID of the Source whose products feed this finder"), mcp.Required()),
+		mcp.WithNumber("content_id", mcp.Description("The products go into this content — its NUMERIC id, not its public_id. Leave empty and a new content is created for it.")),
+		mcp.WithString("result_title", mcp.Description("Result Card: template for the result title; defaults to the item's name")),
+		mcp.WithString("result_desc", mcp.Description("Result Card: template for the result description; defaults to the item's description")),
+		mcp.WithString("result_url", mcp.Description("Result Card: template for the result URL; defaults to the item's url")),
+		mcp.WithString("result_button_text", mcp.Description("Result Card: label of the button on each result")),
+		mcp.WithString("secondary_result_url", mcp.Description("Result Card: template for a second result URL")),
+		mcp.WithString("secondary_result_button_text", mcp.Description("Result Card: label of the second button")),
+		mcp.WithString("filter_desc", mcp.Description("Result Card: filter description shown to users")),
+		mcp.WithString("price_text", mcp.Description("Price: template for the price shown on result cards")),
+		mcp.WithString("old_price_text", mcp.Description("Price: template for the old price")),
+		mcp.WithString("alt", mcp.Description("Result Card: image alt text template")),
+		mcp.WithNumber("price_format", mcp.Description("Price: format price values, 0 or 1")),
+		mcp.WithNumber("old_price_text_strike", mcp.Description("Price: strike through old price, 0 or 1")),
+		mcp.WithNumber("display_price_discount_percent", mcp.Description("Price: display discount percentage, 0 or 1")),
+		mcp.WithNumber("per_page", mcp.Description("Query: products per page, between 1 and 10 (defaults to 5)")),
+		mcp.WithString("default_filters", mcp.Description("Query: filters applied to every search")),
+		mcp.WithString("include_fields", mcp.Description("Query: fields returned with each product")),
+		mcp.WithString("score_filters", mcp.Description("Query: filters that influence scoring")),
+		mcp.WithNumber("pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired for this finder")),
+		mcp.WithNumber("click_pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired when a result is clicked")),
+		mcp.WithNumber("secondary_click_pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired on the secondary button")),
+		mcp.WithNumber("lead_id", mcp.Description("Tracking & Leads: lead form used on the results")),
+		mcp.WithString("search_replace_options_json", mcp.Description("Search & replace rules applied to result text, as a JSON object")),
+	), withAuth(tools.CreateProductFinder))
+
+	s.AddTool(mcp.NewTool(
+		"update_product_finder",
+		mcp.WithDescription("Update a Product Finder: the Source and content it binds (General), the Result Card templates, Price display, Tracking & Leads, or the Query settings. Templates address a product's values as {item.<slug>} with the slugs from get_data_source_elements. Only the parameters you pass are changed."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Name of the Product Finder")),
+		mcp.WithNumber("data_source_id", mcp.Description("ID of the Source whose products feed this finder")),
+		mcp.WithNumber("content_id", mcp.Description("The content the products go into — its NUMERIC id, not its public_id")),
+		mcp.WithString("result_title", mcp.Description("Result Card: template for the result title")),
+		mcp.WithString("result_desc", mcp.Description("Result Card: template for the result description")),
+		mcp.WithString("result_url", mcp.Description("Result Card: template for the result URL")),
+		mcp.WithString("result_button_text", mcp.Description("Result Card: label of the button on each result")),
+		mcp.WithString("secondary_result_url", mcp.Description("Result Card: template for a second result URL")),
+		mcp.WithString("secondary_result_button_text", mcp.Description("Result Card: label of the second button")),
+		mcp.WithString("filter_desc", mcp.Description("Result Card: filter description shown to users")),
+		mcp.WithString("price_text", mcp.Description("Price: template for the price shown on result cards")),
+		mcp.WithString("old_price_text", mcp.Description("Price: template for the old price")),
+		mcp.WithString("alt", mcp.Description("Result Card: image alt text template")),
+		mcp.WithNumber("price_format", mcp.Description("Price: format price values, 0 or 1")),
+		mcp.WithNumber("old_price_text_strike", mcp.Description("Price: strike through old price, 0 or 1")),
+		mcp.WithNumber("display_price_discount_percent", mcp.Description("Price: display discount percentage, 0 or 1")),
+		mcp.WithNumber("per_page", mcp.Description("Query: products per page, between 1 and 10")),
+		mcp.WithString("default_filters", mcp.Description("Query: filters applied to every search")),
+		mcp.WithString("include_fields", mcp.Description("Query: fields returned with each product")),
+		mcp.WithString("score_filters", mcp.Description("Query: filters that influence scoring")),
+		mcp.WithNumber("pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired for this finder")),
+		mcp.WithNumber("click_pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired when a result is clicked")),
+		mcp.WithNumber("secondary_click_pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired on the secondary button")),
+		mcp.WithNumber("lead_id", mcp.Description("Tracking & Leads: lead form used on the results")),
+		mcp.WithString("search_replace_options_json", mcp.Description("Search & replace rules applied to result text, as a JSON object")),
+	), withAuth(tools.UpdateProductFinder))
+
+	s.AddTool(mcp.NewTool(
+		"delete_product_finder",
+		mcp.WithDescription("Delete a Product Finder. The Source and its products are left alone."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteProductFinder))
+
+	s.AddTool(mcp.NewTool(
+		"add_product_finder_field",
+		mcp.WithDescription("Define a Searchable Field on a Product Finder — the last step. Every element of the connected Source can become one: define the ones that should be searched, filtered or sorted. Pass either element (a Source Element: an element id from get_data_source_elements) or field (a Standard Field: a built-in product column such as name, brand, price). The panel picks the type by the element's role — name is primary, description/image/url are secondary, price/sale_price are filter_numeric, and anything else is filter_string, which is what a plain feed column usually is. Defining the same field twice updates it rather than duplicating it."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("primary (the field searches match against), secondary (also searched), filter_string (single-choice filter), filter_string_multi (multi-choice filter), filter_numeric (numeric range filter)"), mcp.Required()),
+		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements. Required unless field is given")),
+		mcp.WithString("field", mcp.Description("Standard Field: a built-in product column, e.g. name, brand, price. Required unless element is given")),
+		mcp.WithString("label", mcp.Description("Label shown to users; defaults to the standard field name or the source element's slug")),
+		mcp.WithNumber("normalize", mcp.Description("Normalize values before matching: 0 or 1")),
+		mcp.WithNumber("optional", mcp.Description("Items missing this field still match: 0 or 1 (default 1)")),
+		mcp.WithNumber("index", mcp.Description("Include in the search index: 0 or 1 (default 1)")),
+		mcp.WithNumber("use_as_source_id", mcp.Description("Treat this field as the item's identity: 0 or 1")),
+		mcp.WithNumber("is_sortable", mcp.Description("Allow sorting results by this field: 0 or 1")),
+	), withAuth(tools.AddProductFinderField))
+
+	s.AddTool(mcp.NewTool(
+		"update_product_finder_field",
+		mcp.WithDescription("Update a Searchable Field of a Product Finder — its type, label or options. Only the parameters you pass are changed."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithNumber("field_id", mcp.Description("Field ID from get_product_finder"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("primary, secondary, filter_string, filter_string_multi or filter_numeric")),
+		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements")),
+		mcp.WithString("field", mcp.Description("Standard Field: a built-in product column, e.g. name, brand, price")),
+		mcp.WithString("label", mcp.Description("Label shown to users")),
+		mcp.WithNumber("normalize", mcp.Description("Normalize values before matching: 0 or 1")),
+		mcp.WithNumber("optional", mcp.Description("Items missing this field still match: 0 or 1")),
+		mcp.WithNumber("index", mcp.Description("Include in the search index: 0 or 1")),
+		mcp.WithNumber("use_as_source_id", mcp.Description("Treat this field as the item's identity: 0 or 1")),
+		mcp.WithNumber("is_sortable", mcp.Description("Allow sorting results by this field: 0 or 1")),
+	), withAuth(tools.UpdateProductFinderField))
+
+	s.AddTool(mcp.NewTool(
+		"delete_product_finder_field",
+		mcp.WithDescription("Remove a Searchable Field from a Product Finder."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithNumber("field_id", mcp.Description("Field ID from get_product_finder"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteProductFinderField))
 
 	// ── Domains ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(

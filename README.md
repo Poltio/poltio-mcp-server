@@ -290,15 +290,39 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `list_reports` | List downloadable report requests |
 | `create_report` | Request a new downloadable report (sent to your account email) |
 
-**Data Sources**
+**Data Sources** — the panel's *Sources*
 
 | Tool | Description |
 |---|---|
 | `list_data_sources` | List data sources connected to this account |
-| `create_data_source` | Submit a new data source (XML/JSON feed URL) for review |
-| `delete_data_source` | Remove a data source submission |
-| `add_data_source_note` | Add a note to a data source request |
+| `create_data_source` | Submit a new data source (XML/JSON feed URL) |
+| `create_csv_data_source` | Create a data source from a CSV file in one step |
+| `create_xml_data_source` | Create an XML data source with its repeating item node set |
+| `get_data_source` | Get one data source with its status, elements and feed analysis |
+| `update_data_source` | Rename a data source or point it at a different feed |
+| `get_data_source_attributes` | Read the analysed feed columns, samples and suggested mappings |
+| `refresh_data_source_format` | Re-analyse the feed after it changed |
+| `set_data_source_elements` | Map feed columns to Poltio element types |
+| `get_data_source_elements` | List the saved element mappings with their ids |
+| `update_data_source_element` | Change one element mapping |
+| `delete_data_source_element` | Remove one element mapping |
+| `publish_data_source` | Queue the import (mark ready) once the mapping is complete |
+| `get_data_source_items` | Get the imported items, paginated |
+| `delete_data_source` | Remove a data source |
 | `upload_data_source` | Upload a file (JSON, XML, CSV, or TXT) as a new data source |
+
+**Product Finders** — a Source connected to a content
+
+| Tool | Description |
+|---|---|
+| `list_product_finders` | List product finders (data source contents) |
+| `get_product_finder` | Get one with its bound content and searchable fields |
+| `create_product_finder` | Turn an imported data source into searchable content |
+| `update_product_finder` | Update result rendering, pagination, filters or tracking |
+| `delete_product_finder` | Delete a product finder |
+| `add_product_finder_field` | Make a field searchable, filterable or sortable |
+| `update_product_finder_field` | Change a searchable field |
+| `delete_product_finder_field` | Remove a searchable field |
 
 **Domains**
 

@@ -1,19 +1,13 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/csv"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -43,6 +37,12 @@ func CreateDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest
 			return nil, fmt.Errorf("type is required (xml, json)")
 		}
 		body := map[string]any{"name": name, "source": source, "type": feedType}
+		if v := req.GetString("items_path", ""); v != "" {
+			body["items_path"] = v
+		}
+		if v := req.GetString("user_agent", ""); v != "" {
+			body["user_agent"] = v
+		}
 		if v := req.GetString("notes", ""); v != "" {
 			body["notes"] = v
 		}
@@ -92,12 +92,10 @@ func CreateCSVDataSource(c UploadClient) func(context.Context, mcp.CallToolReque
 	}
 }
 
-// CreateXMLDataSource fetches a remote XML feed, flattens its items to CSV and
-// creates the data source through the working CSV pipeline. This exists because
-// the platform API cannot set items_path on xml-type sources, so a native xml
-// source always imports 0 items.
-// ponytail: snapshot import, no auto-sync from the feed; refresh = delete + recreate.
-func CreateXMLDataSource(c UploadClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// CreateXMLDataSource creates a native xml data source. The API accepts
+// items_path on create, so the feed is read by the importer itself and stays in
+// sync — no client-side flattening needed.
+func CreateXMLDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		name, err := req.RequireString("name")
 		if err != nil || name == "" {
@@ -111,116 +109,21 @@ func CreateXMLDataSource(c UploadClient) func(context.Context, mcp.CallToolReque
 		if err != nil || itemsPath == "" {
 			return nil, fmt.Errorf("items_path is required (item node name, e.g. item, product, entry)")
 		}
-
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create_xml_data_source: invalid feed_url: %w", err)
+		body := map[string]any{
+			"name":       name,
+			"source":     feedURL,
+			"type":       "xml",
+			"items_path": itemsPath,
 		}
-		httpReq.Header.Set("User-Agent", "PoltioMCP")
-		resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("create_xml_data_source: fetching feed: %w", err)
+		if v := req.GetString("user_agent", ""); v != "" {
+			body["user_agent"] = v
 		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("create_xml_data_source: feed returned HTTP %d", resp.StatusCode)
-		}
-
-		headers, rows, err := xmlItemsToRows(resp.Body, itemsPath)
-		if err != nil {
-			return nil, fmt.Errorf("create_xml_data_source: parsing feed: %w", err)
-		}
-		if len(rows) == 0 {
-			return nil, fmt.Errorf("create_xml_data_source: no <%s> items found in feed; check items_path", itemsPath)
-		}
-
-		var buf bytes.Buffer
-		w := csv.NewWriter(&buf)
-		_ = w.Write(headers)
-		for _, row := range rows {
-			rec := make([]string, len(headers))
-			for i, h := range headers {
-				rec[i] = row[h]
-			}
-			_ = w.Write(rec)
-		}
-		w.Flush()
-		if err := w.Error(); err != nil {
-			return nil, fmt.Errorf("create_xml_data_source: writing csv: %w", err)
-		}
-
-		fields := map[string]string{"type": "csv", "name": name}
-		data, err := c.PostFormFileFields("/platform/data-sources", "source_file", "feed.csv", buf.Bytes(), fields)
+		data, err := c.Post("/platform/data-sources", body)
 		if err != nil {
 			return nil, fmt.Errorf("create_xml_data_source: %w", err)
 		}
-		return mcp.NewToolResultText(fmt.Sprintf("Imported %d items with columns [%s] from the XML feed.\n%s",
-			len(rows), strings.Join(headers, ", "), string(data))), nil
+		return mcp.NewToolResultText(string(data)), nil
 	}
-}
-
-// xmlItemsToRows scans the stream for elements named itemsPath and flattens each
-// one level deep: direct child element name -> concatenated text of its subtree.
-// ponytail: attributes and nested structure are dropped; repeated child names keep the first value.
-func xmlItemsToRows(r io.Reader, itemsPath string) ([]string, []map[string]string, error) {
-	dec := xml.NewDecoder(r)
-	var headers []string
-	seen := map[string]bool{}
-	var rows []map[string]string
-
-	for {
-		tok, err := dec.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		se, ok := tok.(xml.StartElement)
-		if !ok || se.Name.Local != itemsPath {
-			continue
-		}
-
-		row := map[string]string{}
-		depth := 0
-		field := ""
-		var val strings.Builder
-	item:
-		for {
-			t, err := dec.Token()
-			if err != nil {
-				return nil, nil, err
-			}
-			switch tt := t.(type) {
-			case xml.StartElement:
-				depth++
-				if depth == 1 {
-					field = tt.Name.Local
-					val.Reset()
-				}
-			case xml.CharData:
-				if depth >= 1 {
-					val.Write(tt)
-				}
-			case xml.EndElement:
-				if depth == 0 {
-					break item // closing tag of the item itself
-				}
-				if depth == 1 {
-					if _, dup := row[field]; !dup {
-						row[field] = strings.TrimSpace(val.String())
-						if !seen[field] {
-							seen[field] = true
-							headers = append(headers, field)
-						}
-					}
-				}
-				depth--
-			}
-		}
-		rows = append(rows, row)
-	}
-	return headers, rows, nil
 }
 
 func GetDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -243,7 +146,7 @@ func GetDataSourceAttributes(c ContentClient) func(context.Context, mcp.CallTool
 		if err != nil {
 			return nil, fmt.Errorf("data_source_id is required")
 		}
-		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/attributes", nil)
+		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/format", nil)
 		if err != nil {
 			return nil, fmt.Errorf("get_data_source_attributes: %w", err)
 		}
@@ -265,12 +168,24 @@ func SetDataSourceElements(c ContentClient) func(context.Context, mcp.CallToolRe
 		if err := json.Unmarshal([]byte(raw), &elements); err != nil {
 			return nil, fmt.Errorf("elements_json is not a valid JSON array: %w", err)
 		}
+		// The endpoint validates one element per request: a body wrapping them in
+		// an "elements" array is rejected for missing element and type.
 		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/elements"
-		data, err := c.Post(path, map[string]any{"elements": elements})
-		if err != nil {
-			return nil, fmt.Errorf("set_data_source_elements: %w", err)
+		var created []string
+		var failures []string
+		for _, element := range elements {
+			data, err := c.Post(path, element)
+			if err != nil {
+				failures = append(failures, fmt.Sprintf("%v: %v", element["element"], err))
+				continue
+			}
+			created = append(created, string(data))
 		}
-		return mcp.NewToolResultText(string(data)), nil
+		result := fmt.Sprintf("Created %d of %d elements.\n[%s]", len(created), len(elements), strings.Join(created, ",\n"))
+		if len(failures) > 0 {
+			result += "\n\nFailed:\n" + strings.Join(failures, "\n")
+		}
+		return mcp.NewToolResultText(result), nil
 	}
 }
 
@@ -284,9 +199,7 @@ func GetDataSourceItems(c ContentClient) func(context.Context, mcp.CallToolReque
 		if page := req.GetInt("page", 0); page > 0 {
 			q.Set("page", strconv.Itoa(page))
 		}
-		if perPage := req.GetInt("per_page", 0); perPage > 0 {
-			q.Set("per_page", strconv.Itoa(perPage))
-		}
+		// The endpoint paginates by a fixed 25; per_page is not read.
 		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/items", q)
 		if err != nil {
 			return nil, fmt.Errorf("get_data_source_items: %w", err)
@@ -301,28 +214,16 @@ func PublishDataSource(c ContentClient) func(context.Context, mcp.CallToolReques
 		if err != nil {
 			return nil, fmt.Errorf("data_source_id is required")
 		}
-		data, err := c.Post("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/publish", nil)
+		data, err := c.Post("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/mark-ready", nil)
 		if err != nil {
+			// An import already pending or running answers 400 with this message.
+			// The source is in the state the caller asked for, so it is not a
+			// failure. Matched on the message, not the status, so that any other
+			// 400 still surfaces as the error it is.
+			if strings.Contains(err.Error(), "already pending or in progress") {
+				return mcp.NewToolResultText("The data source is already importing (nothing to do)."), nil
+			}
 			return nil, fmt.Errorf("publish_data_source: %w", err)
-		}
-		return mcp.NewToolResultText(string(data)), nil
-	}
-}
-
-func AddDataSourceNote(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		dataSourceID, err := req.RequireInt("data_source_id")
-		if err != nil {
-			return nil, fmt.Errorf("data_source_id is required")
-		}
-		notes, err := req.RequireString("notes")
-		if err != nil || notes == "" {
-			return nil, fmt.Errorf("notes is required")
-		}
-		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/note"
-		data, err := c.Post(path, map[string]any{"notes": notes})
-		if err != nil {
-			return nil, fmt.Errorf("add_data_source_note: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
@@ -345,6 +246,104 @@ func UploadDataSource(c UploadClient) func(context.Context, mcp.CallToolRequest)
 		data, err := c.PostFormFile("/platform/data-sources/upload", "file", filename, content)
 		if err != nil {
 			return nil, fmt.Errorf("upload_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func UpdateDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		body := map[string]any{}
+		for _, key := range []string{"name", "type", "source", "items_path", "user_agent"} {
+			if v := req.GetString(key, ""); v != "" {
+				body[key] = v
+			}
+		}
+		if len(body) == 0 {
+			return nil, fmt.Errorf("nothing to update: pass at least one of name, type, source, items_path, user_agent")
+		}
+		data, err := c.Put("/platform/data-sources/"+strconv.Itoa(dataSourceID), body)
+		if err != nil {
+			return nil, fmt.Errorf("update_data_source: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func RefreshDataSourceFormat(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		data, err := c.Post("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/refresh-format", nil)
+		if err != nil {
+			return nil, fmt.Errorf("refresh_data_source_format: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetDataSourceElements(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/elements", nil)
+		if err != nil {
+			return nil, fmt.Errorf("get_data_source_elements: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func UpdateDataSourceElement(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		elementID, err := req.RequireInt("element_id")
+		if err != nil {
+			return nil, fmt.Errorf("element_id is required")
+		}
+		body := map[string]any{}
+		for _, key := range []string{"type", "element", "slug", "namespace"} {
+			if v := req.GetString(key, ""); v != "" {
+				body[key] = v
+			}
+		}
+		if len(body) == 0 {
+			return nil, fmt.Errorf("nothing to update: pass at least one of type, element, slug, namespace")
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/elements/" + strconv.Itoa(elementID)
+		data, err := c.Put(path, body)
+		if err != nil {
+			return nil, fmt.Errorf("update_data_source_element: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func DeleteDataSourceElement(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		elementID, err := req.RequireInt("element_id")
+		if err != nil {
+			return nil, fmt.Errorf("element_id is required")
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/elements/" + strconv.Itoa(elementID)
+		data, err := c.Delete(path)
+		if err != nil {
+			return nil, fmt.Errorf("delete_data_source_element: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
