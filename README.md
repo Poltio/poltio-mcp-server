@@ -290,7 +290,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `list_reports` | List downloadable report requests |
 | `create_report` | Request a new downloadable report (sent to your account email) |
 
-**Data Sources**
+**Data Sources** — the panel's *Sources*
 
 | Tool | Description |
 |---|---|
@@ -311,7 +311,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `delete_data_source` | Remove a data source |
 | `upload_data_source` | Upload a file (JSON, XML, CSV, or TXT) as a new data source |
 
-**Product Finders**
+**Product Finders** — a Source connected to a content
 
 | Tool | Description |
 |---|---|
