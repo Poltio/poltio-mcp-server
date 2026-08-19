@@ -216,9 +216,11 @@ func PublishDataSource(c ContentClient) func(context.Context, mcp.CallToolReques
 		}
 		data, err := c.Post("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/mark-ready", nil)
 		if err != nil {
-			// An import already pending or running answers 400. The source is in
-			// the state the caller asked for, so it is not a failure.
-			if strings.Contains(err.Error(), "API error 400") {
+			// An import already pending or running answers 400 with this message.
+			// The source is in the state the caller asked for, so it is not a
+			// failure. Matched on the message, not the status, so that any other
+			// 400 still surfaces as the error it is.
+			if strings.Contains(err.Error(), "already pending or in progress") {
 				return mcp.NewToolResultText("The data source is already importing (nothing to do)."), nil
 			}
 			return nil, fmt.Errorf("publish_data_source: %w", err)

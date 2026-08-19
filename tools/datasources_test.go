@@ -100,3 +100,18 @@ func TestPublishDataSource_AlreadyImportingIsNotAnError(t *testing.T) {
 		t.Fatalf("unexpected result: %v", res.Content[0])
 	}
 }
+
+// Any other 400 is a real failure and must not be reported as success.
+func TestPublishDataSource_OtherBadRequestStillFails(t *testing.T) {
+	mock := &mockClient{
+		postFunc: func(string, any) ([]byte, error) {
+			return nil, errors.New(`API error 400: {"msg":"Something else went wrong"}`)
+		},
+	}
+	_, err := tools.PublishDataSource(mock)(context.Background(), callRequest(map[string]any{
+		"data_source_id": float64(7),
+	}))
+	if err == nil {
+		t.Fatal("an unrelated 400 must surface as an error")
+	}
+}
