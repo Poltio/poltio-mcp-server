@@ -199,9 +199,7 @@ func GetDataSourceItems(c ContentClient) func(context.Context, mcp.CallToolReque
 		if page := req.GetInt("page", 0); page > 0 {
 			q.Set("page", strconv.Itoa(page))
 		}
-		if perPage := req.GetInt("per_page", 0); perPage > 0 {
-			q.Set("per_page", strconv.Itoa(perPage))
-		}
+		// The endpoint paginates by a fixed 25; per_page is not read.
 		data, err := c.Get("/platform/data-sources/"+strconv.Itoa(dataSourceID)+"/items", q)
 		if err != nil {
 			return nil, fmt.Errorf("get_data_source_items: %w", err)

@@ -1321,10 +1321,9 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"get_data_source_items",
-		mcp.WithDescription("Get paginated imported items of a published data source, to verify the import worked."),
+		mcp.WithDescription("Get the imported items of a data source, to verify the import worked. Fixed at 25 items per page."),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID"), mcp.Required()),
 		mcp.WithNumber("page", mcp.Description("Page number")),
-		mcp.WithNumber("per_page", mcp.Description("Results per page")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetDataSourceItems))
 
@@ -1403,7 +1402,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_product_finder",
-		mcp.WithDescription("Create a product finder on top of an imported data source. Without content_id a searchable content is generated for it automatically and its items are turned into results in the background — rename that content with update_content afterwards. Import the data source first (publish_data_source), then define what is searchable with add_product_finder_field. The result templates accept the source's element slugs as {placeholders}, e.g. \"{name} - {brand}\"."),
+		mcp.WithDescription("Create a product finder on top of an imported data source. Without content_id a searchable content is generated for it automatically and its items are turned into results in the background — rename that content with update_content afterwards. Import the data source first (publish_data_source), then define what is searchable with add_product_finder_field. The result templates accept the source's element slugs as {placeholders}, e.g. \"{name} - {brand}\". The response carries the numeric content_id but not the content's public_id — read that with get_product_finder."),
 		mcp.WithString("name", mcp.Description("Name of the product finder"), mcp.Required()),
 		mcp.WithNumber("data_source_id", mcp.Description("Data source ID whose items feed this finder"), mcp.Required()),
 		mcp.WithNumber("content_id", mcp.Description("Bind to an existing content by its NUMERIC id (not public_id). Omit to have a searchable content created automatically.")),
