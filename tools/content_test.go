@@ -274,3 +274,35 @@ func TestListDrafts_CallsCorrectPath(t *testing.T) {
 		t.Errorf("path: want /platform/content/drafts, got %q", gotPath)
 	}
 }
+
+// The panel's editor starts new content on the 2026-01 design; content created
+// through MCP matches, without overriding a design the caller chose.
+func TestCreateContent_DefaultsToCurrentDesign(t *testing.T) {
+	designOf := func(args map[string]any) any {
+		var got map[string]any
+		mock := &mockClient{
+			postFunc: func(_ string, body any) ([]byte, error) {
+				got = body.(map[string]any)["options"].(map[string]any)
+				return []byte(`{}`), nil
+			},
+		}
+		args["type"], args["title"] = "set", "T"
+		if _, err := tools.CreateContent(mock)(context.Background(), callRequest(args)); err != nil {
+			t.Fatal(err)
+		}
+		return got["design"]
+	}
+
+	if d := designOf(map[string]any{}); d != "2026-01" {
+		t.Fatalf("no options_json: design = %v", d)
+	}
+	if d := designOf(map[string]any{"options_json": `{"share":"off"}`}); d != "2026-01" {
+		t.Fatalf("options without design: design = %v", d)
+	}
+	if d := designOf(map[string]any{"options_json": "null"}); d != "2026-01" {
+		t.Fatalf("null options_json: design = %v", d)
+	}
+	if d := designOf(map[string]any{"options_json": `{"design":""}`}); d != "" {
+		t.Fatalf("explicit legacy design overridden: design = %v", d)
+	}
+}
