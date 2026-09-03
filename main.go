@@ -92,7 +92,7 @@ func main() {
 		mcp.WithDescription("List Poltio content (polls, quizzes, tests) with optional pagination and filtering."),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
-		mcp.WithString("type", mcp.Description("Filter by type: poll, set, test, quiz, this-that")),
+		mcp.WithString("type", mcp.Description("Filter by type: poll, set, test, quiz, this-that, would-you-rather")),
 		mcp.WithString("q", mcp.Description("Search query against title and description")),
 		mcp.WithString("order", mcp.Description("Sort field: created_at (default), updated_at, vote_count, voter_count, type, id, end_date")),
 		mcp.WithString("sort", mcp.Description("Sort direction: desc (default) or asc")),
@@ -120,11 +120,12 @@ Pick the type that matches the experience:
 - quiz: a right/wrong quiz. Mark one correct answer per question and set attributes_json gives_feedback=1; optionally show a timer (show_timer) and the score (display_results).
 - test: a personality/outcome test. Answers carry points (set_answer_result_point) that add up to a matching result screen chosen by its min_c–max_c score range.
 - this-that: a single "This or That" question. Only one question is allowed and the answer count should be a power of 2 (2, 4, 8, ...).
+- would-you-rather: a single "Would You Rather" question, the dilemma variant of this-that; also single-question, and right/wrong feedback (attributes_json gives_feedback=1) is on by default in the dashboard preset.
 
 After creating, use add_question / add_answer / add_result to build it out. Workflow: create_content → add_question(s) → add_answer(s) → add_result(s) (always add at least one default result) → publish_content.
 
 Public contents are accessible via https://www.poltio.com/widget/{public_id} — generate the link with this formula when the user asks to see their public content.`),
-		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. Note: 'set' backs three dashboard presets — Survey (plain set), Calculator/Product Finder (set + is_calculator), and Searchable Product Finder (set + is_searchable)."), mcp.Required()),
+		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that, would-you-rather. Note: 'set' backs three dashboard presets — Survey (plain set), Calculator/Product Finder (set + is_calculator), and Searchable Product Finder (set + is_searchable)."), mcp.Required()),
 		mcp.WithString("title", mcp.Description("End-user facing title"), mcp.Required()),
 		mcp.WithString("desc", mcp.Description("Cover screen description (optional)")),
 		mcp.WithString("name", mcp.Description("Internal non-public name (optional)")),
@@ -133,8 +134,8 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout cover image path")),
 		mcp.WithString("vertical_mobile_image", mcp.Description("Main cover image for single-column mobile view")),
 		mcp.WithString("embed_footer_url", mcp.Description("URL for the footer image")),
-		mcp.WithString("embed_background", mcp.Description("Background image path for the embedded widget frame")),
 		mcp.WithString("theme_id", mcp.Description("Theme ID to style the widget with (from list_themes)")),
+		mcp.WithString("session_rate_limit", mcp.Description("How aggressively repeat sessions from the same visitor are throttled: none, moderate or strict.")),
 		mcp.WithNumber("skip_start", mcp.Description("Skip cover card and start from first question: 0 (default) or 1")),
 		mcp.WithNumber("skip_result", mcp.Description("Skip result card: 0 (default) or 1")),
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 (default) or 1")),
@@ -190,7 +191,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		mcp.WithDescription("List unpublished (draft) Poltio content items."),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("per_page", mcp.Description("Results per page (default: 12)")),
-		mcp.WithString("type", mcp.Description("Filter by type: poll, set, test, quiz, this-that")),
+		mcp.WithString("type", mcp.Description("Filter by type: poll, set, test, quiz, this-that, would-you-rather")),
 		mcp.WithString("q", mcp.Description("Search query against title and description")),
 		mcp.WithString("order", mcp.Description("Sort field: created_at (default), updated_at, vote_count, voter_count, type, id, end_date")),
 		mcp.WithString("sort", mcp.Description("Sort direction: desc (default) or asc")),
@@ -199,19 +200,19 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 
 	s.AddTool(mcp.NewTool(
 		"update_content",
-		mcp.WithDescription("Update an existing Poltio content item's metadata, cover images, and behavioral options. Only the fields you pass are changed. See create_content for the meaning of each content type and option."),
+		mcp.WithDescription("Update an existing Poltio content item's metadata, cover images, and behavioral options. Only the fields you pass are changed. The API validates title and type on every update, so this tool reads the stored content and sends the current values back when you omit them. See create_content for the meaning of each content type and option."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-		mcp.WithString("title", mcp.Description("New end-user facing title")),
+		mcp.WithString("title", mcp.Description("New end-user facing title. Left as-is when omitted.")),
 		mcp.WithString("desc", mcp.Description("New cover screen description")),
 		mcp.WithString("name", mcp.Description("New internal non-public name")),
-		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that. 'set' backs the Survey, Calculator/Product Finder (is_calculator) and Searchable Product Finder (is_searchable) presets.")),
+		mcp.WithString("type", mcp.Description("Content type. API values: poll, set, test, quiz, this-that, would-you-rather. 'set' backs the Survey, Calculator/Product Finder (is_calculator) and Searchable Product Finder (is_searchable) presets. Required by the API on every update — pass the current type back unless you mean to convert the content.")),
 		mcp.WithString("background", mcp.Description("Cover image path returned by upload_image")),
 		mcp.WithString("alt", mcp.Description("Alt text for the cover image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout cover image path")),
 		mcp.WithString("vertical_mobile_image", mcp.Description("Main cover image for single-column mobile view")),
 		mcp.WithString("embed_footer_url", mcp.Description("URL for the footer image")),
-		mcp.WithString("embed_background", mcp.Description("Background image path for the embedded widget frame")),
 		mcp.WithString("theme_id", mcp.Description("Theme ID to style the widget with (from list_themes)")),
+		mcp.WithString("session_rate_limit", mcp.Description("How aggressively repeat sessions from the same visitor are throttled: none, moderate or strict.")),
 		mcp.WithNumber("skip_start", mcp.Description("Skip cover card: 0 or 1")),
 		mcp.WithNumber("skip_result", mcp.Description("Skip result card: 0 or 1")),
 		mcp.WithNumber("hide_results", mcp.Description("Hide vote percentages: 0 or 1")),
@@ -309,6 +310,32 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 	), withAuth(tools.GetContentSessions))
 
 	s.AddTool(mcp.NewTool(
+		"sync_content_sessions",
+		mcp.WithDescription("Export a content item's sessions for syncing into your own systems: cursor-paginated, one row per session with its votes, results shown, result clicks and conversions. Use updated_after (or a cursor) to fetch only what changed since your last sync; get_content_sessions is the lighter page-numbered view for browsing."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithString("cursor", mcp.Description("Cursor from the previous response's next_cursor, to fetch the following page")),
+		mcp.WithNumber("per_page", mcp.Description("Sessions per page, 1-500 (default: 100)")),
+		mcp.WithString("start", mcp.Description("Only sessions created on or after this date (YYYY-MM-DD), at most 3 years back")),
+		mcp.WithString("end", mcp.Description("Only sessions created on or before this date (YYYY-MM-DD), not in the future")),
+		mcp.WithString("updated_after", mcp.Description("Only sessions changed since this timestamp (YYYY-MM-DD HH:MM:SS) — the incremental sync filter")),
+		mcp.WithNumber("completed_only", mcp.Description("Only sessions that reached the result screen: 0 (default) or 1")),
+		mcp.WithNumber("include_votes", mcp.Description("Include each session's individual votes: 0 (default) or 1")),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.SyncContentSessions))
+
+	s.AddTool(mcp.NewTool(
+		"get_content_result_metrics",
+		mcp.WithDescription("Per-result performance for a content item: view count, click count and click-through rate for each result screen, over an optional date range. Use it to see which results are shown and clicked most; get_content_results lists the result screens themselves."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
+		mcp.WithNumber("per_page", mcp.Description("Results per page, 1-500 (default: 50)")),
+		mcp.WithString("start", mcp.Description("Count views and clicks from this date (YYYY-MM-DD), at most 3 years back")),
+		mcp.WithString("end", mcp.Description("Count views and clicks up to this date (YYYY-MM-DD), not in the future")),
+		mcp.WithNumber("with_trashed", mcp.Description("Include deleted result screens: 0 (default) or 1")),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetContentResultMetrics))
+
+	s.AddTool(mcp.NewTool(
 		"get_content_metrics",
 		mcp.WithDescription("Get time-series metrics for a content item grouped by period."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
@@ -392,14 +419,18 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 - media / text: a normal single- or multiple-choice question. Use 'media' when the answers have images, 'text' for text-only answers (same family). Combine with allow_multiple_answers for multi-select.
 - score: a fixed numeric scale (e.g. 1–5) where each option carries a value; used in scored quizzes/tests and calculators.
 - star_rating: a star-based rating input.
-- yesno: a simple Yes/No question.
 - free_text: a free-form text box the user types into (no preset answers; read submissions later with get_question_inputs).
 - free_number: a free-form numeric input.
 - autocomplete: a typed input that suggests from your predefined answers as the user types; best when you have roughly 15–1000 answers (tune how many suggestions show with recommended_popular_answer).
+- slider: a numeric slider. Its answers are the slider stops: add one answer per value, ascending, with add_answers_bulk (e.g. 0,10,20…100 — at most 100 stops, the last one being the maximum), and label the two ends with options_json.
+- wheel: a spin-the-wheel presentation of ordinary answers — each answer is a slice.
+- mystery-box: ordinary answers presented as boxes the user reveals; add answers exactly as for text/media.
+- scratch-card: accepted by the API but not offered by the dashboard editor, so how it renders in the widget is unverified — prefer mystery-box unless the user asks for it by name.
+'yesno' and 'refer' are legacy types still found on older content but no longer settable — the API rejects them, so such a question cannot be updated through update_question either.
 After adding the question, attach answers with add_answer or add_answers_bulk (free_text/free_number questions take no answers).`),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
-		mcp.WithString("title", mcp.Description("Question text shown to the user")),
-		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), yesno (Yes/No), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers)"), mcp.Required()),
+		mcp.WithString("title", mcp.Description("Question text shown to the user"), mcp.Required()),
+		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers), slider (numeric slider whose answers are its stops), wheel (spin wheel), mystery-box (boxes the user reveals), scratch-card (accepted by the API, unverified in the widget)"), mcp.Required()),
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
@@ -420,15 +451,16 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this question within the content. Lower shows first.")),
 		mcp.WithString("conditions", mcp.Description("Comma-separated Answer IDs (from earlier questions); this question is only shown to users who selected one of them. See condition_reverse to invert.")),
 		mcp.WithNumber("condition_reverse", mcp.Description("Invert the display conditions: 0 = show only to users who selected the condition answer(s); 1 = show only to users who did NOT select them.")),
+		mcp.WithString("options_json", mcp.Description(`Per-question options as a JSON object, replacing the stored one wholesale. Only the slider end labels are supported: {"min_label": "Not at all", "max_label": "Very much"}.`)),
 	), withAuth(tools.AddQuestion))
 
 	s.AddTool(mcp.NewTool(
 		"update_question",
-		mcp.WithDescription("Update an existing question. See add_question for the meaning of each answer_type. Only the fields you pass are changed."),
+		mcp.WithDescription("Update an existing question. See add_question for the meaning of each answer_type. Only the fields you pass are changed, but the API validates title and answer_type on every update — pass the current values back (read them with get_content_edit) when you are changing something else."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
-		mcp.WithString("title", mcp.Description("Question text shown to the user")),
-		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), yesno (Yes/No), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers)"), mcp.Required()),
+		mcp.WithString("title", mcp.Description("Question text shown to the user. Required by the API on every update, even when unchanged."), mcp.Required()),
+		mcp.WithString("answer_type", mcp.Description("How the user answers: media or text (single/multi choice — media if answers have images), score (numeric scale), star_rating (stars), free_text (typed text), free_number (typed number), autocomplete (typed input with answer suggestions, for ~15–1000 answers), slider (numeric slider whose answers are its stops), wheel (spin wheel), mystery-box (boxes the user reveals), scratch-card (accepted by the API, unverified in the widget)"), mcp.Required()),
 		mcp.WithString("background", mcp.Description("Question image path returned by upload_image. For quiz/test content, the image must be thematic only — it must NOT contain text or visuals that reveal or hint at the correct answer.")),
 		mcp.WithString("alt", mcp.Description("Alt text for the question image")),
 		mcp.WithString("vertical_image", mcp.Description("Wide screen layout question image path")),
@@ -449,6 +481,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("position", mcp.Description("Numeric position (order) of this question within the content. Lower shows first.")),
 		mcp.WithString("conditions", mcp.Description("Comma-separated Answer IDs (from earlier questions); this question is only shown to users who selected one of them. See condition_reverse to invert.")),
 		mcp.WithNumber("condition_reverse", mcp.Description("Invert the display conditions: 0 = show only to users who selected the condition answer(s); 1 = show only to users who did NOT select them.")),
+		mcp.WithString("options_json", mcp.Description(`Per-question options as a JSON object, replacing the stored one wholesale. Only the slider end labels are supported: {"min_label": "Not at all", "max_label": "Very much"}.`)),
 	), withAuth(tools.UpdateQuestion))
 
 	s.AddTool(mcp.NewTool(

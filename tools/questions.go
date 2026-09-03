@@ -10,6 +10,20 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// questionOptions reads the per-question options object; the API only validates
+// the slider end labels min_label / max_label.
+func questionOptions(req mcp.CallToolRequest) (map[string]any, error) {
+	raw := req.GetString("options_json", "")
+	if raw == "" {
+		return nil, nil
+	}
+	var opts map[string]any
+	if err := json.Unmarshal([]byte(raw), &opts); err != nil {
+		return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
+	}
+	return opts, nil
+}
+
 func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		publicID, err := req.RequireString("public_id")
@@ -18,7 +32,7 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		}
 		answerType, err := req.RequireString("answer_type")
 		if err != nil || answerType == "" {
-			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, yesno, free_text, free_number, autocomplete)")
+			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, free_text, free_number, autocomplete, slider, wheel, mystery-box)")
 		}
 		body := map[string]any{"answer_type": answerType}
 		if v := req.GetString("title", ""); v != "" {
@@ -83,6 +97,11 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		}
 		if v := req.GetInt("condition_reverse", -1); v >= 0 {
 			body["condition_reverse"] = v
+		}
+		if opts, err := questionOptions(req); err != nil {
+			return nil, err
+		} else if opts != nil {
+			body["options"] = opts
 		}
 		data, err := c.Post("/platform/content/"+publicID+"/question", body)
 		if err != nil {
@@ -104,7 +123,7 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		answerType, err := req.RequireString("answer_type")
 		if err != nil || answerType == "" {
-			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, yesno, free_text, free_number, autocomplete)")
+			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, free_text, free_number, autocomplete, slider, wheel, mystery-box)")
 		}
 		body := map[string]any{"answer_type": answerType}
 		if v := req.GetString("title", ""); v != "" {
@@ -169,6 +188,11 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		if v := req.GetInt("condition_reverse", -1); v >= 0 {
 			body["condition_reverse"] = v
+		}
+		if opts, err := questionOptions(req); err != nil {
+			return nil, err
+		} else if opts != nil {
+			body["options"] = opts
 		}
 		path := "/platform/content/" + publicID + "/question/" + strconv.Itoa(questionID)
 		data, err := c.Put(path, body)
