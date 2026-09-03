@@ -34,10 +34,11 @@ func AddQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) (*m
 		if err != nil || answerType == "" {
 			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, free_text, free_number, autocomplete, slider, wheel, mystery-box)")
 		}
-		body := map[string]any{"answer_type": answerType}
-		if v := req.GetString("title", ""); v != "" {
-			body["title"] = v
+		title, err := req.RequireString("title")
+		if err != nil || title == "" {
+			return nil, fmt.Errorf("title is required — the API validates it on every question write")
 		}
+		body := map[string]any{"answer_type": answerType, "title": title}
 		if v := req.GetString("background", ""); v != "" {
 			body["background"] = v
 		}
@@ -125,10 +126,11 @@ func UpdateQuestion(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		if err != nil || answerType == "" {
 			return nil, fmt.Errorf("answer_type is required (media, text, score, star_rating, free_text, free_number, autocomplete, slider, wheel, mystery-box)")
 		}
-		body := map[string]any{"answer_type": answerType}
-		if v := req.GetString("title", ""); v != "" {
-			body["title"] = v
+		title, err := req.RequireString("title")
+		if err != nil || title == "" {
+			return nil, fmt.Errorf("title is required — the API validates it on every question write")
 		}
+		body := map[string]any{"answer_type": answerType, "title": title}
 		if v := req.GetString("background", ""); v != "" {
 			body["background"] = v
 		}

@@ -77,3 +77,20 @@ func TestUpdateQuestion_RejectsInvalidOptionsJSON(t *testing.T) {
 		t.Errorf("expected options_json error, got %v", err)
 	}
 }
+
+func TestAddQuestion_MissingTitleReturnsError(t *testing.T) {
+	mock := &mockClient{
+		postFunc: func(path string, body any) ([]byte, error) {
+			t.Fatal("request sent without a title")
+			return nil, nil
+		},
+	}
+
+	_, err := tools.AddQuestion(mock)(context.Background(), callRequest(map[string]any{
+		"public_id":   "abc",
+		"answer_type": "text",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "title is required") {
+		t.Errorf("expected title error, got %v", err)
+	}
+}
