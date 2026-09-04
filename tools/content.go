@@ -122,11 +122,11 @@ func CreateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetString("embed_footer_url", ""); v != "" {
 			body["embed_footer_url"] = v
 		}
-		if v := req.GetString("embed_background", ""); v != "" {
-			body["embed_background"] = v
-		}
 		if v := req.GetString("theme_id", ""); v != "" {
 			body["theme_id"] = v
+		}
+		if v := req.GetString("session_rate_limit", ""); v != "" {
+			body["session_rate_limit"] = v
 		}
 		if v := req.GetInt("is_searchable", -1); v >= 0 {
 			body["is_searchable"] = v
@@ -300,11 +300,11 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 		if v := req.GetString("embed_footer_url", ""); v != "" {
 			body["embed_footer_url"] = v
 		}
-		if v := req.GetString("embed_background", ""); v != "" {
-			body["embed_background"] = v
-		}
 		if v := req.GetString("theme_id", ""); v != "" {
 			body["theme_id"] = v
+		}
+		if v := req.GetString("session_rate_limit", ""); v != "" {
+			body["session_rate_limit"] = v
 		}
 		if v := req.GetInt("is_searchable", -1); v >= 0 {
 			body["is_searchable"] = v
@@ -369,6 +369,28 @@ func UpdateContent(c ContentClient) func(context.Context, mcp.CallToolRequest) (
 				return nil, fmt.Errorf("options_json must be valid JSON: %w", err)
 			}
 			body["options"] = opts
+		}
+		// The API validates title and type on every update, so a partial update
+		// needs the stored values sent back with it.
+		// ponytail: one extra GET, only when the caller left them out.
+		if body["title"] == nil || body["type"] == nil {
+			stored, err := c.Get("/platform/content/"+publicID+"/edit", nil)
+			if err != nil {
+				return nil, fmt.Errorf("update_content: reading current content: %w", err)
+			}
+			var current struct {
+				Title string `json:"title"`
+				Type  string `json:"type"`
+			}
+			if err := json.Unmarshal(stored, &current); err != nil {
+				return nil, fmt.Errorf("update_content: reading current content: %w", err)
+			}
+			if body["title"] == nil && current.Title != "" {
+				body["title"] = current.Title
+			}
+			if body["type"] == nil && current.Type != "" {
+				body["type"] = current.Type
+			}
 		}
 		data, err := c.Put("/platform/content/"+publicID, body)
 		if err != nil {
@@ -673,6 +695,72 @@ func CalculatorTest(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		})
 		if err != nil {
 			return nil, fmt.Errorf("calculator_test: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func GetContentResultMetrics(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		publicID, err := req.RequireString("public_id")
+		if err != nil || publicID == "" {
+			return nil, fmt.Errorf("public_id is required")
+		}
+		q := url.Values{}
+		if page := req.GetInt("page", 0); page > 0 {
+			q.Set("page", strconv.Itoa(page))
+		}
+		if perPage := req.GetInt("per_page", 0); perPage > 0 {
+			q.Set("per_page", strconv.Itoa(perPage))
+		}
+		if v := req.GetString("start", ""); v != "" {
+			q.Set("start", v)
+		}
+		if v := req.GetString("end", ""); v != "" {
+			q.Set("end", v)
+		}
+		if v := req.GetInt("with_trashed", -1); v >= 0 {
+			q.Set("with_trashed", strconv.Itoa(v))
+		}
+		data, err := c.Get("/platform/content/"+publicID+"/results/metrics", q)
+		if err != nil {
+			return nil, fmt.Errorf("get_content_result_metrics: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func SyncContentSessions(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		publicID, err := req.RequireString("public_id")
+		if err != nil || publicID == "" {
+			return nil, fmt.Errorf("public_id is required")
+		}
+		q := url.Values{}
+		if v := req.GetString("cursor", ""); v != "" {
+			q.Set("cursor", v)
+		}
+		if perPage := req.GetInt("per_page", 0); perPage > 0 {
+			q.Set("per_page", strconv.Itoa(perPage))
+		}
+		if v := req.GetString("start", ""); v != "" {
+			q.Set("start", v)
+		}
+		if v := req.GetString("end", ""); v != "" {
+			q.Set("end", v)
+		}
+		if v := req.GetString("updated_after", ""); v != "" {
+			q.Set("updated_after", v)
+		}
+		if v := req.GetInt("completed_only", -1); v >= 0 {
+			q.Set("completed_only", strconv.Itoa(v))
+		}
+		if v := req.GetInt("include_votes", -1); v >= 0 {
+			q.Set("include_votes", strconv.Itoa(v))
+		}
+		data, err := c.Get("/platform/content/"+publicID+"/sessions/sync", q)
+		if err != nil {
+			return nil, fmt.Errorf("sync_content_sessions: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}

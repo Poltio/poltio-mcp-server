@@ -306,3 +306,61 @@ func TestCreateContent_DefaultsToCurrentDesign(t *testing.T) {
 		t.Fatalf("explicit legacy design overridden: design = %v", d)
 	}
 }
+
+func TestUpdateContent_FillsTitleAndTypeFromStoredContent(t *testing.T) {
+	var gotPath string
+	var body map[string]any
+	mock := &mockClient{
+		getFunc: func(path string, query url.Values) ([]byte, error) {
+			gotPath = path
+			return []byte(`{"title":"Stored title","type":"quiz","public_id":"abc"}`), nil
+		},
+		putFunc: func(path string, b any) ([]byte, error) {
+			body = b.(map[string]any)
+			return []byte(`{}`), nil
+		},
+	}
+
+	_, err := tools.UpdateContent(mock)(context.Background(), callRequest(map[string]any{
+		"public_id": "abc",
+		"theme_id":  "12",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotPath != "/platform/content/abc/edit" {
+		t.Errorf("stored content read from %q", gotPath)
+	}
+	if body["title"] != "Stored title" || body["type"] != "quiz" {
+		t.Errorf("title/type not carried over: %v", body)
+	}
+	if body["theme_id"] != "12" {
+		t.Errorf("theme_id lost: %v", body)
+	}
+}
+
+func TestUpdateContent_SkipsExtraReadWhenTitleAndTypeGiven(t *testing.T) {
+	var body map[string]any
+	mock := &mockClient{
+		getFunc: func(path string, query url.Values) ([]byte, error) {
+			t.Fatal("read the stored content even though title and type were given")
+			return nil, nil
+		},
+		putFunc: func(path string, b any) ([]byte, error) {
+			body = b.(map[string]any)
+			return []byte(`{}`), nil
+		},
+	}
+
+	_, err := tools.UpdateContent(mock)(context.Background(), callRequest(map[string]any{
+		"public_id": "abc",
+		"title":     "New title",
+		"type":      "poll",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if body["title"] != "New title" || body["type"] != "poll" {
+		t.Errorf("wrong body: %v", body)
+	}
+}

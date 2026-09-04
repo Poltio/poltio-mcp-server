@@ -129,7 +129,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_content` | Get a single content item with its metrics |
 | `get_content_edit` | Get full editable content object including all questions, answers, results, and conditions |
 | `create_content` | Create a new poll/quiz/test (starts as draft) |
-| `update_content` | Update title, description, or name of a content item |
+| `update_content` | Update a content item's metadata, images and options (title and type are carried over automatically when omitted) |
 | `delete_content` | Permanently delete a content item |
 | `publish_content` | Publish a draft content item |
 | `duplicate_content` | Duplicate a content item into a new draft |
@@ -139,6 +139,8 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `use_template` | Clone a content template into a new draft content item |
 | `get_content_results` | Get paginated vote results (per-answer counts) |
 | `get_content_sessions` | Get paginated user sessions |
+| `sync_content_sessions` | Export sessions cursor-paginated with votes, results, clicks and conversions, filterable by `updated_after` for incremental syncs |
+| `get_content_result_metrics` | Per-result view count, click count and CTR over a date range |
 | `get_content_metrics` | Get time-series metrics grouped by day/week/month/year |
 | `get_content_stats` | Get aggregate stat totals for a content item for a date range (device-filterable) |
 | `get_vote_sources` | Get paginated vote sources (referring URLs) for a content item |
