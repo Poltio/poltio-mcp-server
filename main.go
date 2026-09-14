@@ -402,6 +402,30 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetSessionUrls))
 
+	// ── Content shares ────────────────────────────────────────────────────────
+	s.AddTool(mcp.NewTool(
+		"list_content_shares",
+		mcp.WithDescription("List the share secrets issued for a content item. A share lets someone outside the organization read that content's stats and results without a Poltio account. Each row shows who created it, when it expires and whether it has been revoked — but never the secret itself."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.ListContentShares))
+
+	s.AddTool(mcp.NewTool(
+		"create_content_share",
+		mcp.WithDescription("Issue a share secret for a content item, giving read-only access to its stats and results to anyone holding the secret. The response carries secret_key — the only time it is ever shown, since it is stored hashed. Treat it as a credential: hand it to the user, and do not put it anywhere it would be retained."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Name for this share, e.g. who or what it is for"), mcp.Required()),
+		mcp.WithString("time_frame", mcp.Description("How long the share stays valid: '1 day', '7 days' (default) or '15 days'")),
+	), withAuth(tools.CreateContentShare))
+
+	s.AddTool(mcp.NewTool(
+		"revoke_content_share",
+		mcp.WithDescription("Revoke a share secret. Anyone still holding it loses access immediately, and it cannot be un-revoked — issue a new share instead."),
+		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithNumber("share_id", mcp.Description("Share ID from list_content_shares"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.RevokeContentShare))
+
 	// ── Image Upload ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"upload_image",
@@ -1299,10 +1323,10 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_data_source",
-		mcp.WithDescription("Add a new Source from a feed URL (e.g. a Shopify XML or JSON feed) — step 1 of the panel's flow. Poltio then works out which fields the feed carries: read them with get_data_source_attributes (step 2), match them to attributes that can be used for product recommendations with set_data_source_elements (step 3), then save the mappings and start importing the products with publish_data_source (step 4). Once the products are in, build a Product Finder on top with create_product_finder (step 5). For a CSV file use create_csv_data_source instead."),
+		mcp.WithDescription("Add a new Source from a feed URL (e.g. a Shopify XML or JSON feed) — step 1 of the panel's flow. Poltio then works out which fields the feed carries: read them with get_data_source_attributes (step 2), match them to attributes that can be used for product recommendations with set_data_source_elements (step 3), then save the mappings and start importing the products with publish_data_source (step 4). Once the products are in, build a Product Finder on top with create_product_finder (step 5). For a CSV file use create_csv_data_source instead.\n\nA shopify Source works differently: there is no feed to fetch, so no analysis runs and get_data_source_attributes and refresh_data_source_format have nothing to read. Map the elements you expect with set_data_source_elements, call publish_data_source (which marks it synced rather than queueing an import), and put the products in yourself with create_data_source_items — that is also the path the Shopify integration's webhooks use."),
 		mcp.WithString("name", mcp.Description("Human-readable name (min 3 characters)"), mcp.Required()),
-		mcp.WithString("source", mcp.Description("Fully qualified feed URL"), mcp.Required()),
-		mcp.WithString("type", mcp.Description("Feed format: xml or json"), mcp.Required()),
+		mcp.WithString("source", mcp.Description("Fully qualified feed URL — or, when type is shopify, the shop ID rather than a URL"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("Feed format: xml, json, csv, or shopify"), mcp.Required()),
 		mcp.WithString("items_path", mcp.Description("For xml/json feeds: the repeating item node or path, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds. Without it an xml feed can import 0 items.")),
 		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with, when the origin blocks the default one")),
 		mcp.WithString("notes", mcp.Description("Optional notes stored with the data source")),
@@ -1416,6 +1440,37 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded file content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename with extension, e.g. feed.json, data.csv"), mcp.Required()),
 	), withAuth(tools.UploadDataSource))
+
+	s.AddTool(mcp.NewTool(
+		"get_data_source_item",
+		mcp.WithDescription("Read one product from a Source, with its mapped element values. The item can be addressed by its Poltio ID or by its source_id — the identifier the feed itself uses for the product."),
+		mcp.WithNumber("data_source_id", mcp.Description("Source ID"), mcp.Required()),
+		mcp.WithString("item", mcp.Description("The item's Poltio ID or its source_id from the feed"), mcp.Required()),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetDataSourceItem))
+
+	s.AddTool(mcp.NewTool(
+		"create_data_source_items",
+		mcp.WithDescription("Add products to a Source without re-importing the whole feed — the panel's manual item entry, and the path Shopify sources use. Each item needs an identifier (source_id or id), a title (name or title) and a link (url, link or handle); any other keys are matched against the Source's mapped elements, so run get_data_source_elements first to see the slugs available. Adding an item whose source_id already exists updates that item instead of duplicating it."),
+		mcp.WithNumber("data_source_id", mcp.Description("Source ID"), mcp.Required()),
+		mcp.WithString("items_json", mcp.Description(`One product as a JSON object, or up to 100 as a JSON array. Example: [{"source_id":"SKU-1","name":"Blue Shirt","url":"https://shop.example/1","price":"19.90"}]`), mcp.Required()),
+	), withAuth(tools.CreateDataSourceItems))
+
+	s.AddTool(mcp.NewTool(
+		"update_data_source_item",
+		mcp.WithDescription("Replace one product in a Source. Fields you leave out of item_json keep their stored value for source_id, name and url; other element values are taken from the payload as given."),
+		mcp.WithNumber("data_source_id", mcp.Description("Source ID"), mcp.Required()),
+		mcp.WithString("item", mcp.Description("The item's Poltio ID or its source_id from the feed"), mcp.Required()),
+		mcp.WithString("item_json", mcp.Description(`The product as a JSON object, e.g. {"name":"Blue Shirt","price":"24.90"}`), mcp.Required()),
+	), withAuth(tools.UpdateDataSourceItem))
+
+	s.AddTool(mcp.NewTool(
+		"delete_data_source_item",
+		mcp.WithDescription("Remove one product from a Source. A re-import of the feed brings it back if it is still present there."),
+		mcp.WithNumber("data_source_id", mcp.Description("Source ID"), mcp.Required()),
+		mcp.WithString("item", mcp.Description("The item's Poltio ID or its source_id from the feed"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteDataSourceItem))
 
 	// ── Product Finders (data source contents) ────────────────────────────────
 	s.AddTool(mcp.NewTool(
@@ -1540,6 +1595,39 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		destructive(),
 	), withAuth(tools.DeleteProductFinderField))
 
+	s.AddTool(mcp.NewTool(
+		"add_product_finder_filter",
+		mcp.WithDescription("Add a Content Filter to a Product Finder — a rule that narrows which products of the connected Source the finder may return at all. Unlike a Searchable Field, which the user filters with, this one is fixed by you: \"only products where brand equals Acme\", \"only products whose name contains Pro\". Point it at an element from get_data_source_elements and give the value to match."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements. Must belong to the Source this finder is connected to"), mcp.Required()),
+		mcp.WithString("value", mcp.Description("The value to match against")),
+		mcp.WithString("operator", mcp.Description("equals (default) or contains")),
+		mcp.WithString("type", mcp.Description("val (default, match the element's value) or attribute (match an XML attribute)")),
+		mcp.WithString("value_type", mcp.Description("What the element holds: generic (default), id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type")),
+		mcp.WithString("name", mcp.Description("Label for the filter; defaults to the element's slug")),
+	), withAuth(tools.AddProductFinderFilter))
+
+	s.AddTool(mcp.NewTool(
+		"update_product_finder_filter",
+		mcp.WithDescription("Update a Content Filter on a Product Finder. Only the parameters you pass are changed."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithNumber("filter_id", mcp.Description("Filter ID from get_product_finder"), mcp.Required()),
+		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements")),
+		mcp.WithString("value", mcp.Description("The value to match against")),
+		mcp.WithString("operator", mcp.Description("equals or contains")),
+		mcp.WithString("type", mcp.Description("val or attribute")),
+		mcp.WithString("value_type", mcp.Description("generic, id, gtin, name, condition, description, price, sale_price, image, url, brand or product_type")),
+		mcp.WithString("name", mcp.Description("Label for the filter")),
+	), withAuth(tools.UpdateProductFinderFilter))
+
+	s.AddTool(mcp.NewTool(
+		"delete_product_finder_filter",
+		mcp.WithDescription("Remove a Content Filter from a Product Finder, widening it back to the Source's full catalogue."),
+		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
+		mcp.WithNumber("filter_id", mcp.Description("Filter ID from get_product_finder"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteProductFinderFilter))
+
 	// ── Domains ───────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
 		"list_domains",
@@ -1620,6 +1708,24 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
 		destructive(),
 	), withAuth(tools.DeleteWidget))
+
+	s.AddTool(mcp.NewTool(
+		"create_widget_variation",
+		mcp.WithDescription("Add a variation to a dynamic widget — an alternative content shown in the same widget slot, which is how A/B tests are set up. The parent widget keeps its own content as the default."),
+		mcp.WithNumber("widget_id", mcp.Description("Widget ID of the parent widget"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Name for the variation"), mcp.Required()),
+		mcp.WithString("public_id", mcp.Description("public_id of the content this variation shows"), mcp.Required()),
+		mcp.WithNumber("is_active", mcp.Description("Enable the variation: 0 or 1 (default 1)")),
+		mcp.WithString("overlay_options_json", mcp.Description("Overlay options as a JSON object; defaults to the parent widget's")),
+	), withAuth(tools.CreateWidgetVariation))
+
+	s.AddTool(mcp.NewTool(
+		"delete_widget_variation",
+		mcp.WithDescription("Remove a variation from a dynamic widget. The parent widget and its default content are untouched."),
+		mcp.WithNumber("widget_id", mcp.Description("Widget ID of the parent widget"), mcp.Required()),
+		mcp.WithNumber("variation_id", mcp.Description("Widget ID of the variation, from get_widget"), mcp.Required()),
+		destructive(),
+	), withAuth(tools.DeleteWidgetVariation))
 
 	// ── Settings ──────────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(

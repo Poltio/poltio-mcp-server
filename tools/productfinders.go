@@ -225,3 +225,78 @@ func DeleteProductFinderField(c ContentClient) func(context.Context, mcp.CallToo
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
+
+// finderFilterBody collects the writable fields of a product finder filter.
+// Every field is optional here; add requires the element id on top.
+func finderFilterBody(req mcp.CallToolRequest) map[string]any {
+	body := map[string]any{}
+	for _, key := range []string{"name", "type", "operator", "value_type", "value"} {
+		if v := req.GetString(key, ""); v != "" {
+			body[key] = v
+		}
+	}
+	if v := req.GetInt("element", 0); v > 0 {
+		body["data_source_item_element_id"] = v
+	}
+	return body
+}
+
+func AddProductFinderFilter(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireInt("product_finder_id")
+		if err != nil {
+			return nil, fmt.Errorf("product_finder_id is required")
+		}
+		if _, err := req.RequireInt("element"); err != nil {
+			return nil, fmt.Errorf("element is required (an element ID from get_data_source_elements)")
+		}
+		body := finderFilterBody(req)
+		data, err := c.Post("/platform/dsc/"+strconv.Itoa(id)+"/filters", body)
+		if err != nil {
+			return nil, fmt.Errorf("add_product_finder_filter: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func UpdateProductFinderFilter(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireInt("product_finder_id")
+		if err != nil {
+			return nil, fmt.Errorf("product_finder_id is required")
+		}
+		filterID, err := req.RequireInt("filter_id")
+		if err != nil {
+			return nil, fmt.Errorf("filter_id is required")
+		}
+		body := finderFilterBody(req)
+		if len(body) == 0 {
+			return nil, fmt.Errorf("nothing to update: pass at least one field")
+		}
+		path := "/platform/dsc/" + strconv.Itoa(id) + "/filters/" + strconv.Itoa(filterID)
+		data, err := c.Put(path, body)
+		if err != nil {
+			return nil, fmt.Errorf("update_product_finder_filter: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func DeleteProductFinderFilter(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireInt("product_finder_id")
+		if err != nil {
+			return nil, fmt.Errorf("product_finder_id is required")
+		}
+		filterID, err := req.RequireInt("filter_id")
+		if err != nil {
+			return nil, fmt.Errorf("filter_id is required")
+		}
+		path := "/platform/dsc/" + strconv.Itoa(id) + "/filters/" + strconv.Itoa(filterID)
+		data, err := c.Delete(path)
+		if err != nil {
+			return nil, fmt.Errorf("delete_product_finder_filter: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}

@@ -159,3 +159,58 @@ func DeleteWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
+
+// CreateWidgetVariation adds an alternative content to an existing widget. The
+// variation is a widget in its own right, parented to the one given here.
+func CreateWidgetVariation(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		widgetID, err := req.RequireInt("widget_id")
+		if err != nil {
+			return nil, fmt.Errorf("widget_id is required")
+		}
+		name, err := req.RequireString("name")
+		if err != nil || name == "" {
+			return nil, fmt.Errorf("name is required")
+		}
+		publicID, err := req.RequireString("public_id")
+		if err != nil || publicID == "" {
+			return nil, fmt.Errorf("public_id is required (the content this variation shows)")
+		}
+		body := map[string]any{"name": name, "public_id": publicID}
+		if v := req.GetInt("is_active", -1); v >= 0 {
+			body["is_active"] = v == 1
+		}
+		if v := req.GetString("overlay_options_json", ""); v != "" {
+			var opts map[string]any
+			if err := json.Unmarshal([]byte(v), &opts); err != nil {
+				return nil, fmt.Errorf("overlay_options_json must be valid JSON: %w", err)
+			}
+			body["overlay_options"] = opts
+		}
+		path := "/platform/widgets/" + strconv.Itoa(widgetID) + "/variations"
+		data, err := c.Post(path, body)
+		if err != nil {
+			return nil, fmt.Errorf("create_widget_variation: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func DeleteWidgetVariation(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		widgetID, err := req.RequireInt("widget_id")
+		if err != nil {
+			return nil, fmt.Errorf("widget_id is required")
+		}
+		variationID, err := req.RequireInt("variation_id")
+		if err != nil {
+			return nil, fmt.Errorf("variation_id is required")
+		}
+		path := "/platform/widgets/" + strconv.Itoa(widgetID) + "/variations/" + strconv.Itoa(variationID)
+		data, err := c.Delete(path)
+		if err != nil {
+			return nil, fmt.Errorf("delete_widget_variation: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
