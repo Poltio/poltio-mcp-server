@@ -150,6 +150,14 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_session_urls` | Get session URLs grouped by URL with session counts |
 | `upload_image` | Upload an image (<= 5 MB; png, jpg, jpeg, gif, or webp) via a local `image_path`, an `image_url`, or `image_base64`; returns a file path for use in content, questions, answers, or results. Prefer `image_path`/`image_url` — the server reads the bytes directly instead of passing them through the model |
 
+**Content Shares** — read-only access to one content's stats and results for someone outside the organization
+
+| Tool | Description |
+|---|---|
+| `list_content_shares` | List the share secrets issued for a content item |
+| `create_content_share` | Issue a share secret, valid for 1, 7 or 15 days. The `secret_key` is returned once and stored hashed |
+| `revoke_content_share` | Revoke a share secret immediately and permanently |
+
 **Questions**
 
 | Tool | Description |
@@ -297,7 +305,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | Tool | Description |
 |---|---|
 | `list_data_sources` | List data sources connected to this account |
-| `create_data_source` | Submit a new data source (XML/JSON feed URL) |
+| `create_data_source` | Submit a new data source (XML/JSON/CSV feed URL, or a Shopify shop ID) |
 | `create_csv_data_source` | Create a data source from a CSV file in one step |
 | `create_xml_data_source` | Create an XML data source with its repeating item node set |
 | `get_data_source` | Get one data source with its status, elements and feed analysis |
@@ -310,6 +318,10 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `delete_data_source_element` | Remove one element mapping |
 | `publish_data_source` | Queue the import (mark ready) once the mapping is complete |
 | `get_data_source_items` | Get the imported items, paginated |
+| `get_data_source_item` | Read one item by its Poltio id or its feed `source_id` |
+| `create_data_source_items` | Add items by hand or in batches of up to 100 |
+| `update_data_source_item` | Replace one item's values |
+| `delete_data_source_item` | Remove one item |
 | `delete_data_source` | Remove a data source |
 | `upload_data_source` | Upload a file (JSON, XML, CSV, or TXT) as a new data source |
 
@@ -325,6 +337,9 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `add_product_finder_field` | Make a field searchable, filterable or sortable |
 | `update_product_finder_field` | Change a searchable field |
 | `delete_product_finder_field` | Remove a searchable field |
+| `add_product_finder_filter` | Restrict the finder to a subset of the Source's products |
+| `update_product_finder_filter` | Change a content filter |
+| `delete_product_finder_filter` | Remove a content filter |
 
 **Domains**
 
@@ -344,6 +359,8 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_widget` | Get a single dynamic widget |
 | `update_widget` | Update an existing dynamic widget |
 | `delete_widget` | Delete an existing dynamic widget |
+| `create_widget_variation` | Add an alternative content to a widget (A/B testing) |
+| `delete_widget_variation` | Remove a variation from a widget |
 
 **Settings**
 

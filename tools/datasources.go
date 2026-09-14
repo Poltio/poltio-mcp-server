@@ -30,11 +30,11 @@ func CreateDataSource(c ContentClient) func(context.Context, mcp.CallToolRequest
 		}
 		source, err := req.RequireString("source")
 		if err != nil || source == "" {
-			return nil, fmt.Errorf("source is required (fully qualified URL for the feed)")
+			return nil, fmt.Errorf("source is required (fully qualified URL for the feed, or the shop ID when type is shopify)")
 		}
 		feedType, err := req.RequireString("type")
 		if err != nil || feedType == "" {
-			return nil, fmt.Errorf("type is required (xml, json)")
+			return nil, fmt.Errorf("type is required (xml, json, csv, shopify)")
 		}
 		body := map[string]any{"name": name, "source": source, "type": feedType}
 		if v := req.GetString("items_path", ""); v != "" {
@@ -344,6 +344,123 @@ func DeleteDataSourceElement(c ContentClient) func(context.Context, mcp.CallTool
 		data, err := c.Delete(path)
 		if err != nil {
 			return nil, fmt.Errorf("delete_data_source_element: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+// GetDataSourceItem reads one item. The API resolves the identifier against
+// both the internal id and the feed's own source_id, so either works.
+func GetDataSourceItem(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		item, err := req.RequireString("item")
+		if err != nil || item == "" {
+			return nil, fmt.Errorf("item is required (the item's id or its source_id)")
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/items/" + url.PathEscape(item)
+		data, err := c.Get(path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("get_data_source_item: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+// CreateDataSourceItems adds items to a manual or Shopify source. items_json
+// takes either one object or an array — the API accepts a batch of up to 100
+// under an "items" key, and reports per-item failures without failing the rest.
+func CreateDataSourceItems(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		raw, err := req.RequireString("items_json")
+		if err != nil || raw == "" {
+			return nil, fmt.Errorf("items_json is required")
+		}
+		body, err := itemsPayload(raw)
+		if err != nil {
+			return nil, err
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/items"
+		data, err := c.Post(path, body)
+		if err != nil {
+			return nil, fmt.Errorf("create_data_source_items: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+// itemsPayload turns the caller's JSON into the shape the API expects: an
+// array becomes a batch under "items", a single object is sent as the item
+// itself. Decoded rather than forwarded verbatim so malformed JSON fails here
+// with a clear message instead of as an opaque API 422.
+func itemsPayload(raw string) (map[string]any, error) {
+	var arr []any
+	if err := json.Unmarshal([]byte(raw), &arr); err == nil {
+		if len(arr) == 0 {
+			return nil, fmt.Errorf("items_json is an empty array: pass at least one item")
+		}
+		if len(arr) > 100 {
+			return nil, fmt.Errorf("items_json holds %d items: the API accepts at most 100 per call", len(arr))
+		}
+		return map[string]any{"items": arr}, nil
+	}
+	var one map[string]any
+	if err := json.Unmarshal([]byte(raw), &one); err != nil {
+		return nil, fmt.Errorf("items_json must be a JSON object or array of objects: %w", err)
+	}
+	return map[string]any{"item": one}, nil
+}
+
+// UpdateDataSourceItem replaces one item. The API fills source_id, name and url
+// from the stored item when they are absent, so a partial payload is fine.
+func UpdateDataSourceItem(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		item, err := req.RequireString("item")
+		if err != nil || item == "" {
+			return nil, fmt.Errorf("item is required (the item's id or its source_id)")
+		}
+		raw, err := req.RequireString("item_json")
+		if err != nil || raw == "" {
+			return nil, fmt.Errorf("item_json is required")
+		}
+		var one map[string]any
+		if err := json.Unmarshal([]byte(raw), &one); err != nil {
+			return nil, fmt.Errorf("item_json must be a JSON object: %w", err)
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/items/" + url.PathEscape(item)
+		data, err := c.Put(path, map[string]any{"item": one})
+		if err != nil {
+			return nil, fmt.Errorf("update_data_source_item: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func DeleteDataSourceItem(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		dataSourceID, err := req.RequireInt("data_source_id")
+		if err != nil {
+			return nil, fmt.Errorf("data_source_id is required")
+		}
+		item, err := req.RequireString("item")
+		if err != nil || item == "" {
+			return nil, fmt.Errorf("item is required (the item's id or its source_id)")
+		}
+		path := "/platform/data-sources/" + strconv.Itoa(dataSourceID) + "/items/" + url.PathEscape(item)
+		data, err := c.Delete(path)
+		if err != nil {
+			return nil, fmt.Errorf("delete_data_source_item: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
