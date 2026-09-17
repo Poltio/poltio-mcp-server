@@ -1,18 +1,21 @@
 # Poltio MCP Server
 
-MCP server that exposes [Poltio](https://poltio.com) platform content management as AI-accessible tools. Works with Claude Desktop, Gemini, and any MCP-compatible client.
+MCP server that exposes [Poltio](https://poltio.com) platform content management as AI-accessible tools. Works with Claude Code, Claude Desktop, Gemini, and any MCP-compatible client.
 
-## Install in Claude Desktop
+## Connect
 
-1. Download **`poltio.mcpb`** from the [latest release](https://github.com/Poltio/poltio-mcp-server/releases/latest).
-2. Double-click it. Claude Desktop opens an install dialog — click **Install**.
-3. Paste your API token when prompted (Poltio → **Settings → Tokens**), then enable the extension.
+The server is hosted at `https://mcp.poltio.com/mcp`. Point a client at it and
+authenticate in the browser when prompted:
 
-Use a long-lived API token, not a short-lived session token — the latter stops working within a day.
+```bash
+claude mcp add --transport http poltio https://mcp.poltio.com/mcp
+```
 
-The bundle covers macOS (Intel and Apple Silicon) and Windows. On Linux, or for any other MCP client, use the manual setup below.
+The URL must include the `/mcp` path. The bare origin is the health endpoint and
+answers `405` to an MCP POST, which a client reports as a failed connection.
 
-> The macOS binary is unsigned (no Apple Developer ID), so the bundle clears its own quarantine flag on first launch. Without that, macOS terminates it with no error message.
+For stdio setups (see below), use a long-lived API token instead of OAuth —
+a short-lived session token stops working within a day.
 
 ## Build from source
 
@@ -20,12 +23,6 @@ Requires Go 1.21+ and a Poltio API token.
 
 ```bash
 go build -o poltio-mcp-server .
-```
-
-To rebuild the installer bundle (macOS only — needs `lipo`):
-
-```bash
-scripts/build-mcpb.sh v1.2.3
 ```
 
 ## Configuration
@@ -59,7 +56,7 @@ The server publishes protected resource metadata (RFC 9728) at `/.well-known/oau
 
 ```json
 {
-  "resource": "https://mcp.poltio.com",
+  "resource": "https://mcp.poltio.com/mcp",
   "authorization_servers": ["https://api.poltio.com"]
 }
 ```
@@ -75,7 +72,7 @@ The server publishes protected resource metadata (RFC 9728) at `/.well-known/oau
 
 ## Claude Desktop (manual setup)
 
-Only needed if you are not using the `poltio.mcpb` bundle above. Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+For a local stdio process instead of the hosted server. Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {

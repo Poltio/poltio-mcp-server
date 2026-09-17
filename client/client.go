@@ -14,11 +14,10 @@ import (
 	"time"
 )
 
-// TODO(oauth): staging until the OAuth server ships to production — /oauth/*
-// only exists on api-stage today, so this is what makes the connector work.
-// Anything with no POLTIO_API_BASE_URL set gets this, including the Claude
-// Desktop .mcpb bundle. Switch to https://api.poltio.com once prod has OAuth.
-const defaultBaseURL = "https://api-stage.poltio.com"
+// Anything with no POLTIO_API_BASE_URL set gets this. /oauth/* (discovery,
+// register, authorize, token) is served here as well as on api-stage, so the
+// connector completes the flow against prod.
+const defaultBaseURL = "https://api.poltio.com"
 
 // ErrUnauthorized is returned when the API rejects the token. The API answers an
 // invalid or expired token with a 302 to its own root rather than a 401, so this
