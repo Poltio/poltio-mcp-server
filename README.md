@@ -14,7 +14,7 @@ claude mcp add --transport http poltio https://mcp.poltio.com/mcp
 The URL must include the `/mcp` path. The bare origin is the health endpoint and
 answers `405` to an MCP POST, which a client reports as a failed connection.
 
-Use a long-lived API token instead of OAuth only for stdio setups (see below) —
+For stdio setups (see below), use a long-lived API token instead of OAuth —
 a short-lived session token stops working within a day.
 
 ## Build from source
