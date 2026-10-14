@@ -1560,7 +1560,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"add_product_finder_field",
 		mcp.WithDescription("Define a Searchable Field on a Product Finder — the last step. Every element of the connected Source can become one: define the ones that should be searched, filtered or sorted. Pass either element (a Source Element: an element id from get_data_source_elements) or field (a Standard Field: a built-in product column such as name, brand, price). The panel picks the type by the element's role — name is primary, description/image/url are secondary, price/sale_price are filter_numeric, and anything else is filter_string, which is what a plain feed column usually is. Defining the same field twice updates it rather than duplicating it."),
 		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
-		mcp.WithString("type", mcp.Description("primary (the field searches match against), secondary (also searched), filter_string (single-choice filter), filter_string_multi (multi-choice filter), filter_numeric (numeric range filter)"), mcp.Required()),
+		mcp.WithString("type", mcp.Description("primary (the field searches match against), secondary (also searched), filter_string (single-choice filter), filter_string_multi (multi-choice filter), filter_numeric (numeric range filter), filter_bool (yes/no filter)"), mcp.Required()),
 		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements. Required unless field is given")),
 		mcp.WithString("field", mcp.Description("Standard Field: a built-in product column, e.g. name, brand, price. Required unless element is given")),
 		mcp.WithString("label", mcp.Description("Label shown to users; defaults to the standard field name or the source element's slug")),
@@ -1576,7 +1576,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Update a Searchable Field of a Product Finder — its type, label or options. Only the parameters you pass are changed."),
 		mcp.WithNumber("product_finder_id", mcp.Description("Product finder (DSC) ID"), mcp.Required()),
 		mcp.WithNumber("field_id", mcp.Description("Field ID from get_product_finder"), mcp.Required()),
-		mcp.WithString("type", mcp.Description("primary, secondary, filter_string, filter_string_multi or filter_numeric")),
+		mcp.WithString("type", mcp.Description("primary, secondary, filter_string, filter_string_multi, filter_numeric or filter_bool")),
 		mcp.WithNumber("element", mcp.Description("Source Element: element ID from get_data_source_elements")),
 		mcp.WithString("field", mcp.Description("Standard Field: a built-in product column, e.g. name, brand, price")),
 		mcp.WithString("label", mcp.Description("Label shown to users")),
@@ -1687,6 +1687,16 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.GetWidget))
+
+	s.AddTool(mcp.NewTool(
+		"get_widget_stats",
+		mcp.WithDescription("Get stat totals for a Dynamic Widget for a date range: per-metric totals (views, starts, ...) for the widget itself, the same per variation, and combined view/start totals across the widget and all its variations. Use this to compare A/B variations."),
+		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
+		mcp.WithString("start", mcp.Description("Start date (YYYY-MM-DD), at most 3 years ago")),
+		mcp.WithString("end", mcp.Description("End date (YYYY-MM-DD), not after today")),
+		mcp.WithString("device_type", mcp.Description("Filter by device: mobile, desktop, tablet, or n/a (unknown). Omit for all devices.")),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetWidgetStats))
 
 	s.AddTool(mcp.NewTool(
 		"update_widget",

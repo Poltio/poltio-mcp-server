@@ -170,7 +170,7 @@ func AddProductFinderField(c ContentClient) func(context.Context, mcp.CallToolRe
 			return nil, fmt.Errorf("product_finder_id is required")
 		}
 		if _, err := req.RequireString("type"); err != nil {
-			return nil, fmt.Errorf("type is required (primary, secondary, filter_string, filter_string_multi, filter_numeric)")
+			return nil, fmt.Errorf("type is required (primary, secondary, filter_string, filter_string_multi, filter_numeric, filter_bool)")
 		}
 		body := finderFieldBody(req)
 		if body["field"] == nil && body["element"] == nil {

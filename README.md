@@ -354,6 +354,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `list_widgets` | List your existing dynamic widgets |
 | `create_widget` | Create a new dynamic widget |
 | `get_widget` | Get a single dynamic widget |
+| `get_widget_stats` | Get stat totals for a widget and its variations |
 | `update_widget` | Update an existing dynamic widget |
 | `delete_widget` | Delete an existing dynamic widget |
 | `create_widget_variation` | Add an alternative content to a widget (A/B testing) |

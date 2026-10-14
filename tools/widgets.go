@@ -94,6 +94,26 @@ func GetWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp
 	}
 }
 
+func GetWidgetStats(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		widgetID, err := req.RequireInt("widget_id")
+		if err != nil {
+			return nil, fmt.Errorf("widget_id is required")
+		}
+		q := url.Values{}
+		for _, k := range []string{"start", "end", "device_type"} {
+			if v := req.GetString(k, ""); v != "" {
+				q.Set(k, v)
+			}
+		}
+		data, err := c.Get("/platform/widgets/"+strconv.Itoa(widgetID)+"/stats", q)
+		if err != nil {
+			return nil, fmt.Errorf("get_widget_stats: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
 func UpdateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		widgetID, err := req.RequireInt("widget_id")
