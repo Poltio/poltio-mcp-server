@@ -37,13 +37,12 @@ func CreateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		if err != nil || publicID == "" {
 			return nil, fmt.Errorf("public_id is required")
 		}
-		body := map[string]any{"public_id": publicID}
-		if v := req.GetString("name", ""); v != "" {
-			body["name"] = v
+		name, err := req.RequireString("name")
+		if err != nil || name == "" {
+			return nil, fmt.Errorf("name is required")
 		}
-		if v := req.GetInt("is_default", -1); v >= 0 {
-			body["is_default"] = v == 1
-		}
+		// The API requires is_default on every create.
+		body := map[string]any{"public_id": publicID, "name": name, "is_default": req.GetInt("is_default", 0) == 1}
 		if v := req.GetInt("is_active", -1); v >= 0 {
 			body["is_active"] = v == 1
 		}
@@ -71,6 +70,9 @@ func CreateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 				return nil, fmt.Errorf("overlay_options_json must be valid JSON: %w", err)
 			}
 			body["overlay_options"] = opts
+		}
+		if err := setAB(req, body); err != nil {
+			return nil, err
 		}
 		data, err := c.Post("/platform/widgets", body)
 		if err != nil {
@@ -158,12 +160,74 @@ func UpdateWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 			}
 			body["overlay_options"] = opts
 		}
+		if err := setAB(req, body); err != nil {
+			return nil, err
+		}
+		if err := fillRequiredWidgetFields(c, widgetID, body); err != nil {
+			return nil, fmt.Errorf("update_widget: %w", err)
+		}
 		data, err := c.Put("/platform/widgets/"+strconv.Itoa(widgetID), body)
 		if err != nil {
 			return nil, fmt.Errorf("update_widget: %w", err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
+}
+
+// setAB copies ab_json into body; the literal "null" clears the A/B test.
+func setAB(req mcp.CallToolRequest, body map[string]any) error {
+	v := req.GetString("ab_json", "")
+	if v == "" {
+		return nil
+	}
+	var ab map[string]any
+	if err := json.Unmarshal([]byte(v), &ab); err != nil {
+		return fmt.Errorf("ab_json must be a JSON object or null: %w", err)
+	}
+	body["ab"] = ab
+	return nil
+}
+
+// fillRequiredWidgetFields fills the fields the API requires on every PUT —
+// public_id and name, plus is_default and urls on a parent widget — from the
+// stored widget, so update_widget can change just one field.
+func fillRequiredWidgetFields(c ContentClient, widgetID int, body map[string]any) error {
+	data, err := c.Get("/platform/widgets/"+strconv.Itoa(widgetID), nil)
+	if err != nil {
+		return fmt.Errorf("read current widget: %w", err)
+	}
+	var w struct {
+		ParentID  *int   `json:"parent_id"`
+		PublicID  string `json:"public_id"`
+		Name      string `json:"name"`
+		IsDefault bool   `json:"is_default"`
+		URLs      []struct {
+			URL string `json:"url"`
+		} `json:"urls"`
+	}
+	if err := json.Unmarshal(data, &w); err != nil {
+		return fmt.Errorf("read current widget: %w", err)
+	}
+	if _, ok := body["public_id"]; !ok {
+		body["public_id"] = w.PublicID
+	}
+	if _, ok := body["name"]; !ok {
+		body["name"] = w.Name
+	}
+	if w.ParentID != nil { // a variation: is_default and urls are prohibited
+		return nil
+	}
+	if _, ok := body["is_default"]; !ok {
+		body["is_default"] = w.IsDefault
+	}
+	if _, ok := body["urls"]; !ok && len(w.URLs) > 0 {
+		urls := make([]map[string]any, len(w.URLs))
+		for i, u := range w.URLs {
+			urls[i] = map[string]any{"url": u.URL}
+		}
+		body["urls"] = urls
+	}
+	return nil
 }
 
 func DeleteWidget(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
