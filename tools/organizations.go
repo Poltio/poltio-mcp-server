@@ -67,6 +67,20 @@ func UpdateOrganization(c ContentClient) func(context.Context, mcp.CallToolReque
 	}
 }
 
+func CreateOrganization(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		name, err := req.RequireString("name")
+		if err != nil || name == "" {
+			return nil, fmt.Errorf("name is required")
+		}
+		data, err := c.Post("/platform/organizations", map[string]any{"name": name})
+		if err != nil {
+			return nil, fmt.Errorf("create_organization: %w", err)
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
 func InviteOrgMember(c ContentClient) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		orgID, err := req.RequireInt("organization_id")

@@ -171,7 +171,9 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 - redirect (string URL): redirect the widget page to this URL.
 - keywords (string): meta keywords for the widget page.`)),
 		mcp.WithString("options_json", mcp.Description(`Display options as a JSON object. Fields:
-- design (string): widget design — "2026-01" (the current vertical-image design, enabling the options below) or "" (empty, the legacy 2025 design). Defaults to "2026-01", as the panel's editor does for new content; pass "" only to deliberately create content on the legacy design.
+- design (string): widget design — "2026-01" (the current vertical-image design, enabling the options below), "chatbot" (the content plays as a chat conversation; typically shown through a widget whose trigger-type is "chatbot"), or "" (empty, the legacy 2025 design). Defaults to "2026-01", as the panel's editor does for new content; pass "" only to deliberately create content on the legacy design.
+- chat_name (string): the bot's display name in the chat header ("chatbot" design only).
+- chat_avatar (string): the bot's avatar — an image filename returned by upload_image ("chatbot" design only).
 - result_background_blur ("on"/"off"): blur the background image behind result cards (2026 design only).
 - share ("off"/""): set "off" to hide the share button (2026 design only).
 - list_bullet_points ("true"/""): render result descriptions as bullet points (searchable content, 2026 design only).
@@ -463,7 +465,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 (default) or 1. Pair with max_multi_punch_answer to cap selections.")),
 		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 (default) or 1")),
 		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 (default) or 1. Note: passing 1 for quiz and test content ensures each user sees answers in a different order.")),
-		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle all answers except the last one (keeps e.g. 'None of the above' at the bottom): 0 (default) or 1. Mutually exclusive with rotate_answers.")),
+		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle the answers but keep the last N in place (e.g. 1 keeps 'None of the above' at the bottom). 0 (default) keeps none fixed. Any N > 0 shuffles on its own, without rotate_answers.")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
 		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
 		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
@@ -493,7 +495,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("allow_multiple_answers", mcp.Description("Let users pick more than one answer (multi-select / multi-punch): 0 or 1. Pair with max_multi_punch_answer to cap selections.")),
 		mcp.WithNumber("is_skippable", mcp.Description("Let users move to the next question without answering: 0 or 1")),
 		mcp.WithNumber("rotate_answers", mcp.Description("Shuffle the answer order independently for each user: 0 or 1. Always pass 1 for quiz and test content so answer order varies per user.")),
-		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle all answers except the last one (keeps e.g. 'None of the above' at the bottom): 0 or 1. Mutually exclusive with rotate_answers.")),
+		mcp.WithNumber("rotate_answers_last", mcp.Description("Shuffle the answers but keep the last N in place (e.g. 1 keeps 'None of the above' at the bottom). 0 keeps none fixed. Any N > 0 shuffles on its own, without rotate_answers.")),
 		mcp.WithString("name", mcp.Description("Question name, only for internal use")),
 		mcp.WithNumber("max_multi_punch_answer", mcp.Description("Maximum number of answers a user may select. Only meaningful when allow_multiple_answers=1.")),
 		mcp.WithNumber("recommended_popular_answer", mcp.Description("For autocomplete questions: how many of the most-voted answers to suggest as the user types.")),
@@ -1672,13 +1674,17 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		"create_widget",
 		mcp.WithDescription("Create a Dynamic Widget: a placement rule that auto-loads a chosen content item on your site through the Poltio embed snippet, either on every page or only on specific page URLs. Lets you swap which content shows where without editing your site code."),
 		mcp.WithString("public_id", mcp.Description("Public ID of the content this widget displays"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Internal name for the widget")),
-		mcp.WithNumber("is_default", mcp.Description("Make this the default widget shown on every page with the snippet: 0 or 1. When 1, omit urls.")),
+		mcp.WithString("name", mcp.Description("Internal name for the widget"), mcp.Required()),
+		mcp.WithNumber("is_default", mcp.Description("Legacy \"show on all pages\" switch: 0 (default) or 1. The widget script ignores it — for every page, pass urls=https://yourdomain.com/* instead.")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). For all pages, pass is_default=1 instead.")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URL rules where this widget appears. Each is a full URL with a lowercase domain and a path (https://shop.com/, not https://shop.com). End with /* to match a page and everything under it (https://shop.com/category/* — or https://shop.com/* for the whole site); * works only as a trailing /*, not with a ?query, and a lone * matches nothing. The #fragment is ignored. A URL may be attached to at most 3 widgets.")),
 		mcp.WithString("starts_at", mcp.Description("Schedule start: only show the widget from this moment, format 'YYYY-MM-DD HH:MM:SS'")),
 		mcp.WithString("ends_at", mcp.Description("Schedule end: stop showing the widget after this moment, format 'YYYY-MM-DD HH:MM:SS'")),
-		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Read an existing widget with get_widget to see the shape before setting this.")),
+		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe, chatbot), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Recent keys: floating-expanded-delay (ms before an expanded widget appears), floating-product-tag (product card element: div, li, span, section, article, aside, p, a), floating-product-visible-when (a CSS selector; the product card shows only when the page matches it, e.g. to target grid vs list view). Unknown keys are rejected by the API with a 422 naming the key. Read an existing widget with get_widget to see the shape before setting this.")),
+		mcp.WithString("ab_json", mcp.Description(`A/B test config as a JSON object, or null to remove it: {"enabled": true, "case": "off" | "variants", "split_ratio": 0-100, "starts_at": "YYYY-MM-DD HH:MM:SS", "ends_at": "..."}.
+- case "off" (holdout test): split_ratio % of visitors see nothing, the rest see the widget — measures the widget's baseline impact. Variations take no traffic.
+- case "variants": split_ratio % is spread evenly over the variations (create_widget_variation), the parent keeps the rest; e.g. 70 with two variations is 35/35/30. null split_ratio splits evenly.
+The test runs only while enabled and inside its own starts_at/ends_at window. Compare arms with get_widget_stats.`)),
 	), withAuth(tools.CreateWidget))
 
 	s.AddTool(mcp.NewTool(
@@ -1700,16 +1706,20 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"update_widget",
-		mcp.WithDescription("Update an existing Dynamic Widget."),
+		mcp.WithDescription("Update an existing Dynamic Widget. Only the fields you pass change; the rest are kept."),
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID"), mcp.Required()),
 		mcp.WithString("public_id", mcp.Description("Content public identifier")),
 		mcp.WithString("name", mcp.Description("Widget name")),
-		mcp.WithNumber("is_default", mcp.Description("Set as default widget shown on every page: 0 or 1. When 1, omit urls.")),
+		mcp.WithNumber("is_default", mcp.Description("Legacy \"show on all pages\" switch: 0 or 1. The widget script ignores it — for every page, use urls=https://yourdomain.com/* instead.")),
 		mcp.WithNumber("is_active", mcp.Description("Enable the widget: 0 or 1")),
-		mcp.WithString("urls", mcp.Description("Comma-separated page URLs where this widget should appear (Specific Page targeting). For all pages, pass is_default=1 instead.")),
+		mcp.WithString("urls", mcp.Description("Comma-separated page URL rules where this widget appears. Each is a full URL with a lowercase domain and a path (https://shop.com/, not https://shop.com). End with /* to match a page and everything under it (https://shop.com/category/* — or https://shop.com/* for the whole site); * works only as a trailing /*, not with a ?query, and a lone * matches nothing. The #fragment is ignored. A URL may be attached to at most 3 widgets.")),
 		mcp.WithString("starts_at", mcp.Description("Schedule start: only show the widget from this moment, format 'YYYY-MM-DD HH:MM:SS'")),
 		mcp.WithString("ends_at", mcp.Description("Schedule end: stop showing the widget after this moment, format 'YYYY-MM-DD HH:MM:SS'")),
-		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Read the widget with get_widget first and send back the modified object.")),
+		mcp.WithString("overlay_options_json", mcp.Description("Appearance/behavior config as a JSON object (as produced by the dashboard widget editor): trigger type (card, pill, box, product_card, iframe, chatbot), trigger position, colors, collapsed state, show-on-load/show-on-scroll, delay, and per-device (mobile) overrides. Recent keys: floating-expanded-delay (ms before an expanded widget appears), floating-product-tag (product card element: div, li, span, section, article, aside, p, a), floating-product-visible-when (a CSS selector; the product card shows only when the page matches it, e.g. to target grid vs list view). Unknown keys are rejected by the API with a 422 naming the key. Read the widget with get_widget first and send back the modified object; if the 422 names an unknown key the SDK has since dropped, remove it and resend.")),
+		mcp.WithString("ab_json", mcp.Description(`A/B test config as a JSON object, or null to remove it: {"enabled": true, "case": "off" | "variants", "split_ratio": 0-100, "starts_at": "YYYY-MM-DD HH:MM:SS", "ends_at": "..."}.
+- case "off" (holdout test): split_ratio % of visitors see nothing, the rest see the widget — measures the widget's baseline impact. Variations take no traffic.
+- case "variants": split_ratio % is spread evenly over the variations (create_widget_variation), the parent keeps the rest; e.g. 70 with two variations is 35/35/30. null split_ratio splits evenly.
+The test runs only while enabled and inside its own starts_at/ends_at window. Compare arms with get_widget_stats.`)),
 	), withAuth(tools.UpdateWidget))
 
 	s.AddTool(mcp.NewTool(
@@ -1721,7 +1731,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	s.AddTool(mcp.NewTool(
 		"create_widget_variation",
-		mcp.WithDescription("Add a variation to a dynamic widget — an alternative content shown in the same widget slot, which is how A/B tests are set up. The parent widget keeps its own content as the default."),
+		mcp.WithDescription("Add a variation to a dynamic widget — an alternative content (and look) for the same widget slot, used as an A/B test arm. It takes no traffic until the parent widget has ab_json {\"enabled\": true, \"case\": \"variants\"} (set with update_widget). The parent widget keeps its own content as the control."),
 		mcp.WithNumber("widget_id", mcp.Description("Widget ID of the parent widget"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Name for the variation"), mcp.Required()),
 		mcp.WithString("public_id", mcp.Description("public_id of the content this variation shows"), mcp.Required()),
@@ -1822,6 +1832,12 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("List Poltio organizations the current user belongs to, including their role in each."),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.ListOrganizations))
+
+	s.AddTool(mcp.NewTool(
+		"create_organization",
+		mcp.WithDescription("Create a new organization owned by the current user. It starts a trial when the user is still eligible; the response includes the new organization and its subscription summary. Use switch_organization to work in it."),
+		mcp.WithString("name", mcp.Description("Organization name (unique across Poltio)"), mcp.Required()),
+	), withAuth(tools.CreateOrganization))
 
 	s.AddTool(mcp.NewTool(
 		"switch_organization",
@@ -1949,23 +1965,17 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 
 	// ── Subscription ──────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool(
+		"get_subscription",
+		mcp.WithDescription("Get the active organization's plan: whether it has a subscription, status (active, trialing, cancelled, expired, ...), trial/renewal/end dates, days left, tier, and whether the current user can manage billing. Many write tools answer 402 subscription_required when the plan has lapsed — check this first."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), withAuth(tools.GetSubscription))
+
+	s.AddTool(mcp.NewTool(
 		"list_subscription_tiers",
-		mcp.WithDescription("List available subscription tiers and their features."),
+		mcp.WithDescription("List the available subscription tiers, their prices and features. There is no self-checkout: upgrades go through sales (the response's contact_sales.url)."),
+		mcp.WithString("currency", mcp.Description("Price currency: USD (default) or EUR")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), withAuth(tools.ListSubscriptionTiers))
-
-	s.AddTool(mcp.NewTool(
-		"create_subscription",
-		mcp.WithDescription("Create a new subscription for the current organization."),
-		mcp.WithNumber("tier_id", mcp.Description("Subscription tier ID (from list_subscription_tiers)"), mcp.Required()),
-		mcp.WithString("period", mcp.Description("Billing period: month or year"), mcp.Required()),
-	), withAuth(tools.CreateSubscription))
-
-	s.AddTool(mcp.NewTool(
-		"cancel_subscription",
-		mcp.WithDescription("Cancel the current organization's subscription. This is a billing-affecting action — only call it when the user explicitly asks to cancel."),
-		destructive(),
-	), withAuth(tools.CancelSubscription))
 
 	if port != "" {
 		httpServer := server.NewStreamableHTTPServer(

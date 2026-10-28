@@ -357,7 +357,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 | `get_widget_stats` | Get stat totals for a widget and its variations |
 | `update_widget` | Update an existing dynamic widget |
 | `delete_widget` | Delete an existing dynamic widget |
-| `create_widget_variation` | Add an alternative content to a widget (A/B testing) |
+| `create_widget_variation` | Add an A/B test arm to a widget (live once the parent's `ab` case is `variants`) |
 | `delete_widget_variation` | Remove a variation from a widget |
 
 **Settings**
@@ -388,6 +388,7 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 |---|---|
 | `list_organizations` | List organizations the current user belongs to, including their role |
 | `switch_organization` | Switch the active organization context |
+| `create_organization` | Create a new organization (starts a trial when eligible) |
 | `get_organization` | Get an organization's details including members and pending invites |
 | `update_organization` | Update an organization's name |
 | `invite_org_member` | Invite a new member to an organization via email |
@@ -405,9 +406,8 @@ Install the Gemini CLI and add the server to your MCP config (`~/.gemini/setting
 
 | Tool | Description |
 |---|---|
-| `list_subscription_tiers` | List available subscription tiers and their features |
-| `create_subscription` | Create a new subscription for the current organization |
-| `cancel_subscription` | Cancel the current organization's subscription |
+| `get_subscription` | Get the active organization's plan, status and trial/renewal dates |
+| `list_subscription_tiers` | List available subscription tiers, prices and features (USD or EUR) |
 
 **Utilities**
 
