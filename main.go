@@ -40,8 +40,14 @@ type orgEntry struct {
 // it in with an upstream outage and inviting retries that cannot succeed.
 var errNoOrganization = errors.New("this Poltio account belongs to no organization — create or join one, then reconnect")
 
-// activateFirstOrg selects the account's first organization as the active one.
-func activateFirstOrg(c *client.PoltioClient) error {
+// errNotMember means the caller asked for an organization the token's account
+// does not belong to. Permanent until the caller changes the request, so 403.
+var errNotMember = errors.New("this Poltio account is not a member of the requested organization")
+
+// activateOrg selects want as the active organization, or the account's first
+// one when want is empty. want is checked against the account's own list, so a
+// caller cannot point a token at an organization it has no access to.
+func activateOrg(c *client.PoltioClient, want string) error {
 	data, err := c.GetOrganizations()
 	if err != nil {
 		return err
@@ -53,8 +59,17 @@ func activateFirstOrg(c *client.PoltioClient) error {
 	if len(orgs) == 0 {
 		return errNoOrganization
 	}
-	c.SetOrgID(strconv.Itoa(orgs[0].ID))
-	return nil
+	if want == "" {
+		c.SetOrgID(strconv.Itoa(orgs[0].ID))
+		return nil
+	}
+	for _, o := range orgs {
+		if strconv.Itoa(o.ID) == want {
+			c.SetOrgID(want)
+			return nil
+		}
+	}
+	return errNotMember
 }
 
 func main() {
@@ -72,7 +87,7 @@ func main() {
 		// exit as "write EPIPE / Server disconnected" and discards this log, so the
 		// user is told nothing. Starting anyway lets the first tool call return the
 		// real reason — see client.ErrUnauthorized.
-		if err := activateFirstOrg(c); err != nil {
+		if err := activateOrg(c, ""); err != nil {
 			log.Printf("warning: no active organization selected: %v", err)
 		}
 	}
