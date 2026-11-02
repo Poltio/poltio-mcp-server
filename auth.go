@@ -85,6 +85,26 @@ func readOnly(next http.HandlerFunc) http.HandlerFunc {
 // tool handlers. Absent in stdio mode, where the env token is used instead.
 type tokenCtxKey struct{}
 
+// orgCtxKey carries the Organization-Id header, for callers that already know
+// which organization the user is working in (the platform's chat panel) and
+// must not get the account's first one instead.
+type orgCtxKey struct{}
+
+// orgHeader names the organization to act in. Same header the Poltio API uses.
+func orgHeader(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("Organization-Id"))
+}
+
+// cacheKey identifies one cached client. A bare token keeps the key it always
+// had; an explicit organization gets its own client, so two panels on different
+// organizations with the same token cannot overwrite each other's selection.
+func cacheKey(tok, org string) string {
+	if org == "" {
+		return tok
+	}
+	return tok + "\x00" + org
+}
+
 // publicURL is this server's own canonical URL, used as the OAuth resource
 // identifier. Override when running somewhere other than production.
 func publicURL() string {
@@ -108,7 +128,10 @@ func bearerToken(r *http.Request) string {
 // build a client for that specific user.
 func withBearer(ctx context.Context, r *http.Request) context.Context {
 	if tok := bearerToken(r); tok != "" {
-		return context.WithValue(ctx, tokenCtxKey{}, tok)
+		ctx = context.WithValue(ctx, tokenCtxKey{}, tok)
+		if org := orgHeader(r); org != "" {
+			ctx = context.WithValue(ctx, orgCtxKey{}, org)
+		}
 	}
 	return ctx
 }
@@ -135,7 +158,8 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 	if tok == "" {
 		return baseClient, nil
 	}
-	c, err := clientForToken(tok)
+	org, _ := ctx.Value(orgCtxKey{}).(string)
+	c, err := clientForToken(tok, org)
 	if err != nil {
 		if errors.Is(err, client.ErrUnauthorized) {
 			return nil, errReauthNeeded
@@ -151,13 +175,15 @@ func clientForCtx(ctx context.Context) (*client.PoltioClient, error) {
 // useless over OAuth — there is no env var to fix, only a connector to reconnect.
 var errReauthNeeded = errors.New("your Poltio authorization is invalid or has expired — reconnect the Poltio connector to sign in again")
 
-// clientForToken resolves and caches the client for one bearer token. The first
-// call for a token hits the API to select an organization, which doubles as
-// proof the token is good — errors wrap client.ErrUnauthorized so callers can
-// tell a rejected token from an unreachable API.
-func clientForToken(tok string) (*client.PoltioClient, error) {
+// clientForToken resolves and caches the client for one bearer token and
+// requested organization ("" for the account's first). The first call hits the
+// API to select the organization, which doubles as proof the token is good —
+// errors wrap client.ErrUnauthorized so callers can tell a rejected token from
+// an unreachable API.
+func clientForToken(tok, org string) (*client.PoltioClient, error) {
+	key := cacheKey(tok, org)
 	clientsMu.Lock()
-	c, ok := clients[tok]
+	c, ok := clients[key]
 	clientsMu.Unlock()
 	if ok {
 		return c, nil
@@ -166,7 +192,7 @@ func clientForToken(tok string) (*client.PoltioClient, error) {
 	// Deliberately not holding the lock across the network call, so a slow
 	// activation cannot stall every other token's requests.
 	c = client.New(tok)
-	if err := activateFirstOrg(c); err != nil {
+	if err := activateOrg(c, org); err != nil {
 		// Surface the real reason (bad token, no organization) instead of
 		// caching a client whose every call would fail confusingly.
 		return nil, err
@@ -178,10 +204,10 @@ func clientForToken(tok string) (*client.PoltioClient, error) {
 	// active organization — overwriting it would discard that silently.
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	if existing, ok := clients[tok]; ok {
+	if existing, ok := clients[key]; ok {
 		return existing, nil
 	}
-	clients[tok] = c
+	clients[key] = c
 	return c, nil
 }
 
@@ -207,7 +233,8 @@ func withAuth[T any](newHandler func(T) toolHandler) toolHandler {
 			// re-validates, and gets the 401 challenge that restarts the OAuth
 			// flow. Without this the connector fails every call until the pod
 			// restarts, with nothing telling the client to re-authenticate.
-			evictToken(tok)
+			org, _ := ctx.Value(orgCtxKey{}).(string)
+			evictToken(cacheKey(tok, org))
 			// Same substitution clientForCtx makes: this caller has no env var
 			// to fix. Only rewritten in OAuth mode — a stdio user genuinely does
 			// need the sentinel's advice.
@@ -217,11 +244,12 @@ func withAuth[T any](newHandler func(T) toolHandler) toolHandler {
 	}
 }
 
-// evictToken forgets the cached client for a token.
-func evictToken(tok string) {
+// evictToken forgets the cached client under a cacheKey. Other organizations'
+// clients for the same token stay until their own next 401 evicts them.
+func evictToken(key string) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	delete(clients, tok)
+	delete(clients, key)
 }
 
 // oauthHandler wraps the MCP endpoint with the two pieces an MCP client needs
@@ -320,7 +348,7 @@ func requireBearer(next http.Handler, metadataURL string) http.Handler {
 		// costs one API call per new token rather than one per request. A token
 		// that dies mid-session passes here until a tool call fails and evicts
 		// it (see withAuth); the request after that re-validates and 401s.
-		if _, err := clientForToken(tok); err != nil {
+		if _, err := clientForToken(tok, orgHeader(r)); err != nil {
 			if errors.Is(err, client.ErrUnauthorized) {
 				challenge(w, metadataURL, "invalid_token", "Your Poltio authorization is invalid or has expired.")
 				return
@@ -328,7 +356,7 @@ func requireBearer(next http.Handler, metadataURL string) http.Handler {
 			// The token is good but the account cannot use the server. Permanent
 			// until the user acts, so 403 — a 503 invites retries that cannot
 			// succeed, and can make health tooling read this as an outage.
-			if errors.Is(err, errNoOrganization) {
+			if errors.Is(err, errNoOrganization) || errors.Is(err, errNotMember) {
 				writeErr(w, http.StatusForbidden, "forbidden", err.Error())
 				return
 			}

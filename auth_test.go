@@ -187,7 +187,7 @@ func TestExpiredTokenIsEvictedSoReauthCanHappen(t *testing.T) {
 	stubAPI(t, tok, apiAccepts)
 
 	// Prime the cache the way a first successful request would.
-	if _, err := clientForToken(tok); err != nil {
+	if _, err := clientForToken(tok, ""); err != nil {
 		t.Fatalf("priming the cache: %v", err)
 	}
 	clientsMu.Lock()
@@ -373,7 +373,7 @@ func TestClientForCtxCachesPerToken(t *testing.T) {
 	if gotAuth != "Bearer "+tok {
 		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer "+tok)
 	}
-	// Set by activateFirstOrg on first resolve; proves org state survives.
+	// Set by activateOrg on first resolve; proves org state survives.
 	if gotOrg != "123" {
 		t.Errorf("Organization-Id = %q, want %q", gotOrg, "123")
 	}
@@ -638,5 +638,119 @@ func TestClientForCtxFallsBackToBaseClient(t *testing.T) {
 	}
 	if c != baseClient {
 		t.Errorf("no token in context resolved to %p, want the base client %p", c, baseClient)
+	}
+}
+
+// The platform's chat panel already knows which organization the user is in
+// and sends it as Organization-Id. That organization must be the one tools act
+// on — not the account's first — and must not disturb the header-less client.
+func TestOrganizationHeaderSelectsOrganization(t *testing.T) {
+	var gotOrg string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/platform/account/profile" {
+			_, _ = w.Write([]byte(`{"organizations":[{"id":1},{"id":2}]}`))
+			return
+		}
+		gotOrg = r.Header.Get("Organization-Id")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+	t.Setenv("POLTIO_API_BASE_URL", ts.URL)
+
+	const tok = "org-header-token"
+	t.Cleanup(func() {
+		clientsMu.Lock()
+		delete(clients, tok)
+		delete(clients, cacheKey(tok, "2"))
+		clientsMu.Unlock()
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	r.Header.Set("Organization-Id", "2")
+	withOrg, err := clientForCtx(withBearer(context.Background(), r))
+	if err != nil {
+		t.Fatalf("resolve with header: %v", err)
+	}
+	if _, err := withOrg.Get("/platform/content", nil); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if gotOrg != "2" {
+		t.Errorf("Organization-Id = %q, want %q", gotOrg, "2")
+	}
+
+	r.Header.Del("Organization-Id")
+	without, err := clientForCtx(withBearer(context.Background(), r))
+	if err != nil {
+		t.Fatalf("resolve without header: %v", err)
+	}
+	if without == withOrg {
+		t.Fatal("header and header-less requests share a client")
+	}
+	if _, err := without.Get("/platform/content", nil); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if gotOrg != "1" {
+		t.Errorf("header-less Organization-Id = %q, want first org %q", gotOrg, "1")
+	}
+}
+
+// The header is caller input. A token must not be pointed at an organization
+// its account does not belong to, even if the API would also refuse it.
+func TestOrganizationHeaderForNonMemberIsForbidden(t *testing.T) {
+	const tok = "non-member-token"
+	stubAPI(t, tok, apiAccepts) // member of organization 1 only
+
+	reached := false
+	h := oauthHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	r.Header.Set("Organization-Id", "99")
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", w.Code)
+	}
+	if reached {
+		t.Error("non-member request reached the MCP server")
+	}
+	clientsMu.Lock()
+	_, cached := clients[cacheKey(tok, "99")]
+	clientsMu.Unlock()
+	if cached {
+		t.Error("non-member client was cached")
+	}
+}
+
+// An org-scoped client lives under its own cache key, so eviction on a 401 has
+// to use that key too — evicting the bare token would leave the dead client
+// cached and every later call from the panel would fail until a restart.
+func TestExpiredTokenEvictsOrganizationScopedClient(t *testing.T) {
+	const tok = "expires-with-org"
+	key := cacheKey(tok, "1")
+	stubAPI(t, tok, apiAccepts)
+	t.Cleanup(func() { evictToken(key) })
+
+	if _, err := clientForToken(tok, "1"); err != nil {
+		t.Fatalf("priming the cache: %v", err)
+	}
+
+	handler := withAuth(func(*client.PoltioClient) toolHandler {
+		return func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, fmt.Errorf("list_content: %w", client.ErrUnauthorized)
+		}
+	})
+	ctx := context.WithValue(context.Background(), tokenCtxKey{}, tok)
+	ctx = context.WithValue(ctx, orgCtxKey{}, "1")
+	if _, err := handler(ctx, mcp.CallToolRequest{}); !errors.Is(err, errReauthNeeded) {
+		t.Errorf("err = %v, want errReauthNeeded", err)
+	}
+
+	clientsMu.Lock()
+	_, still := clients[key]
+	clientsMu.Unlock()
+	if still {
+		t.Error("org-scoped client still cached after its token was rejected")
 	}
 }

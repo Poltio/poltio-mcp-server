@@ -50,6 +50,8 @@ In HTTP mode every request must carry its own `Authorization: Bearer <token>` he
 
 The token can be either a personal API token from Settings → Tokens or an OAuth access token issued by the Poltio API — the API accepts both on the same endpoints.
 
+A request may also send `Organization-Id: <id>` to act in that organization instead of the account's first one. The id must be one of the account's organizations, otherwise the request is rejected with `403`. Each token and organization pair gets its own client.
+
 ### OAuth discovery
 
 The server publishes protected resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource`:
