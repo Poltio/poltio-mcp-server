@@ -1486,7 +1486,6 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Add products to a Source without re-importing the whole feed — the panel's manual item entry, and the path Shopify sources use. Each item needs an identifier (source_id or id), a title (name or title) and a link (url, link or handle); any other keys are matched against the Source's mapped elements, so run get_data_source_elements first to see the slugs available. Adding an item whose source_id already exists updates that item instead of duplicating it."),
 		mcp.WithNumber("data_source_id", mcp.Description("Source ID"), mcp.Required()),
 		mcp.WithString("items_json", mcp.Description(`One product as a JSON object, or up to 100 as a JSON array. Example: [{"source_id":"SKU-1","name":"Blue Shirt","url":"https://shop.example/1","price":"19.90"}]`), mcp.Required()),
-		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateDataSourceItems))
 
 	s.AddTool(mcp.NewTool(
@@ -1549,7 +1548,6 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("secondary_click_pixel_code_id", mcp.Description("Tracking & Leads: pixel code fired on the secondary button")),
 		mcp.WithNumber("lead_id", mcp.Description("Tracking & Leads: lead form used on the results")),
 		mcp.WithString("search_replace_options_json", mcp.Description("Search & replace rules applied to result text, as a JSON object")),
-		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateProductFinder))
 
 	s.AddTool(mcp.NewTool(
@@ -1603,7 +1601,6 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithNumber("index", mcp.Description("Include in the search index: 0 or 1 (default 1)")),
 		mcp.WithNumber("use_as_source_id", mcp.Description("Treat this field as the item's identity: 0 or 1")),
 		mcp.WithNumber("is_sortable", mcp.Description("Allow sorting results by this field: 0 or 1")),
-		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddProductFinderField))
 
 	s.AddTool(mcp.NewTool(
