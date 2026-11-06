@@ -88,7 +88,7 @@ func AddAnswersBulk(c ContentClient) func(context.Context, mcp.CallToolRequest) 
 		}
 		body := map[string]any{
 			"answers":         answers,
-			"remove_existing": req.GetInt("remove_existing", 0) == 1,
+			"remove_existing": false,
 		}
 		path := "/platform/content/" + publicID + "/question/" + strconv.Itoa(questionID) + "/answer/multi"
 		data, err := c.Post(path, body)

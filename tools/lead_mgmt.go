@@ -348,12 +348,9 @@ func AddLeadCodes(c ContentClient) func(context.Context, mcp.CallToolRequest) (*
 		if err != nil || codes == "" {
 			return nil, fmt.Errorf("codes is required (one code per line)")
 		}
-		body := map[string]any{"codes": codes}
+		body := map[string]any{"codes": codes, "remove_existing": false}
 		if v := req.GetInt("single_use", -1); v >= 0 {
 			body["single_use"] = v == 1
-		}
-		if v := req.GetInt("remove_existing", -1); v >= 0 {
-			body["remove_existing"] = v == 1
 		}
 		data, err := c.Post("/platform/leads/"+leadID+"/codes", body)
 		if err != nil {
