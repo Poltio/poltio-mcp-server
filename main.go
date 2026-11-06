@@ -567,7 +567,6 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("answers", mcp.Description("Answer texts, one per line. Each non-empty line becomes a separate answer."), mcp.Required()),
-		mcp.WithNumber("remove_existing", mcp.Description("Delete the question's existing answers before adding these (replace instead of append): 0 (default) or 1")),
 		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddAnswersBulk))
 
@@ -949,7 +948,6 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithString("codes", mcp.Description("Coupon codes, one per line"), mcp.Required()),
 		mcp.WithNumber("single_use", mcp.Description("Each code can only be used once: 0 (default) or 1")),
-		mcp.WithNumber("remove_existing", mcp.Description("Remove existing codes first: 0 (default) or 1")),
 		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddLeadCodes))
 
