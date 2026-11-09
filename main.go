@@ -195,6 +195,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 - bundle_title (string): heading above bundled/companion results, e.g. "Pairs perfectly with".
 - result_button_placement ("top"/"bottom"): where the result CTA button is placed.
 - hide_result_session_id (0/1): hide the session ID line on the result screen.`)),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateContent))
 
 	s.AddTool(mcp.NewTool(
@@ -278,6 +279,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		"duplicate_content",
 		mcp.WithDescription("Duplicate an existing Poltio content item into a new draft."),
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.DuplicateContent))
 
 	s.AddTool(mcp.NewTool(
@@ -304,6 +306,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		"use_template",
 		mcp.WithDescription("Clone a content template into a new draft content item in your account."),
 		mcp.WithString("public_id", mcp.Description("Template public identifier"), mcp.Required()),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.UseTemplate))
 
 	s.AddTool(mcp.NewTool(
@@ -451,6 +454,7 @@ Public contents are accessible via https://www.poltio.com/widget/{public_id} —
 		mcp.WithString("image_url", mcp.Description("An http(s) URL to the image; the server fetches it directly. Use this for remotely hosted images instead of downloading and re-encoding them.")),
 		mcp.WithString("image_base64", mcp.Description("Fallback for when you only have raw bytes. Base64-encoded image data, either a raw base64 string or a data URI such as data:image/png;base64,.... The decoded image must not exceed 2 MiB. Avoid for large images — the entire payload must be emitted as the tool argument, which is slow and can fail.")),
 		mcp.WithString("ext", mcp.Description("Optional file extension without the dot: png, jpg, jpeg, gif, webp. If omitted, it is derived from the image content.")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.UploadImage))
 
 	// ── Questions ─────────────────────────────────────────────────────────────
@@ -493,6 +497,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("conditions", mcp.Description("Comma-separated Answer IDs (from earlier questions); this question is only shown to users who selected one of them. See condition_reverse to invert.")),
 		mcp.WithNumber("condition_reverse", mcp.Description("Invert the display conditions: 0 = show only to users who selected the condition answer(s); 1 = show only to users who did NOT select them.")),
 		mcp.WithString("options_json", mcp.Description(`Per-question options as a JSON object, replacing the stored one wholesale. Only the slider end labels are supported: {"min_label": "Not at all", "max_label": "Very much"}.`)),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddQuestion))
 
 	s.AddTool(mcp.NewTool(
@@ -553,6 +558,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithNumber("max_vote", mcp.Description("Cap this answer at this many votes; once reached it is disabled and disabled_msg is shown. 0 = unlimited.")),
 		mcp.WithString("addon", mcp.Description("Extra metadata attached to this answer; forwarded to GTM events, Pixel events, webhooks and leads when the answer is selected.")),
 		mcp.WithString("disabled_msg", mcp.Description("Message shown in place of this answer once it is disabled (e.g. after hitting max_vote).")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddAnswer))
 
 	s.AddTool(mcp.NewTool(
@@ -561,7 +567,7 @@ After adding the question, attach answers with add_answer or add_answers_bulk (f
 		mcp.WithString("public_id", mcp.Description("Content public identifier"), mcp.Required()),
 		mcp.WithNumber("question_id", mcp.Description("Question ID"), mcp.Required()),
 		mcp.WithString("answers", mcp.Description("Answer texts, one per line. Each non-empty line becomes a separate answer."), mcp.Required()),
-		mcp.WithNumber("remove_existing", mcp.Description("Delete the question's existing answers before adding these (replace instead of append): 0 (default) or 1")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddAnswersBulk))
 
 	s.AddTool(mcp.NewTool(
@@ -643,6 +649,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("secondary_url", mcp.Description("URL for a secondary action button on the result. Overwritten by the DSC when the content is connected to a data source.")),
 		mcp.WithString("secondary_url_text", mcp.Description("Label for the secondary action button (used with secondary_url).")),
 		mcp.WithString("source_id", mcp.Description("Product ID for this result, used in GTM ecommerce events, conversion tracking and pixel codes. Overwritten by the DSC when the content is connected to a data source.")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddResult))
 
 	s.AddTool(mcp.NewTool(
@@ -700,6 +707,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithNumber("question_id", mcp.Description("The question whose visibility is being gated"), mcp.Required()),
 		mcp.WithNumber("answer_id", mcp.Description("An answer from an earlier question that triggers the condition"), mcp.Required()),
 		mcp.WithNumber("condition_reverse", mcp.Description("0 (default) = show the question only to users who selected the answer; 1 = show it only to users who did NOT select the answer.")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddQuestionCondition))
 
 	s.AddTool(mcp.NewTool(
@@ -853,6 +861,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("tc2_approve_button_label", mcp.Description("Custom button label for the second accept section")),
 		mcp.WithString("tc2_reject_button_label", mcp.Description("Custom button label for the second reject section")),
 		mcp.WithString("custom_labels_json", mcp.Description(`Custom input field labels as JSON, e.g. {"email":"E-mail","gsm":"Phone"}`)),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateLead))
 
 	s.AddTool(mcp.NewTool(
@@ -939,7 +948,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("lead_id", mcp.Description("Lead ID"), mcp.Required()),
 		mcp.WithString("codes", mcp.Description("Coupon codes, one per line"), mcp.Required()),
 		mcp.WithNumber("single_use", mcp.Description("Each code can only be used once: 0 (default) or 1")),
-		mcp.WithNumber("remove_existing", mcp.Description("Remove existing codes first: 0 (default) or 1")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddLeadCodes))
 
 	s.AddTool(mcp.NewTool(
@@ -982,6 +991,7 @@ Add a default result (is_default=1) as a fallback for users no other result matc
 		mcp.WithString("code", mcp.Description(`HTML snippet (img, iframe, or script tag) fired when this pixel is triggered. You may embed dynamic placeholder tokens that Poltio substitutes at fire time:
 [parent_page_url] (URL of the page embedding the widget, escaped), [content_id], [content_title], [q_title], [q_number], [q_id], [a_title], [a_number], [a_id], [r_title], [r_number], [r_id], [r_source_id] (the product's ID from your data-source feed), [voter_id], [puid] (your own UUID passed on the widget URL), [session_id].
 Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id]"/>.`), mcp.Required()),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreatePixelCode))
 
 	s.AddTool(mcp.NewTool(
@@ -1108,6 +1118,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithDescription("Create a new theme. Call get_default_theme first to discover available fields, then pass overrides as fields_json."),
 		mcp.WithString("name", mcp.Description("Internal name for the theme"), mcp.Required()),
 		mcp.WithString("fields_json", mcp.Description("JSON object of theme fields to set (colors, fonts, radii, per-section styles like cover_*, question_*, result_*, gtm_id). Color values must be RGB like 'rgb(255, 0, 0)' or 'r,g,b' as returned by get_default_theme — not hex.")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateTheme))
 
 	s.AddTool(mcp.NewTool(
@@ -1329,6 +1340,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("public_id", mcp.Description("Content public_id for content-scoped reports (content-sessions, content-voters)")),
 		mcp.WithNumber("base_id", mcp.Description("Base entity ID, e.g. the lead ID for voter-leads reports")),
 		mcp.WithString("target_ids", mcp.Description("Comma-separated answer IDs for answer-voters reports")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateReport))
 
 	// ── Data Sources ──────────────────────────────────────────────────────────
@@ -1347,6 +1359,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("items_path", mcp.Description("For xml/json feeds: the repeating item node or path, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds. Without it an xml feed can import 0 items.")),
 		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with, when the origin blocks the default one")),
 		mcp.WithString("notes", mcp.Description("Optional notes stored with the data source")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateDataSource))
 
 	s.AddTool(mcp.NewTool(
@@ -1355,6 +1368,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("name", mcp.Description("Human-readable name for the data source"), mcp.Required()),
 		mcp.WithString("file_base64", mcp.Description("Base64-encoded CSV content. The decoded file must not exceed 2 MiB."), mcp.Required()),
 		mcp.WithString("filename", mcp.Description("Filename, defaults to data.csv")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateCSVDataSource))
 
 	s.AddTool(mcp.NewTool(
@@ -1364,6 +1378,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("feed_url", mcp.Description("Fully qualified URL of the XML feed"), mcp.Required()),
 		mcp.WithString("items_path", mcp.Description("Name of the repeating item node, e.g. 'item' for RSS/Google Shopping feeds or 'product' for custom feeds"), mcp.Required()),
 		mcp.WithString("user_agent", mcp.Description("Custom User-Agent to fetch the feed with, when the origin blocks the default one")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateXMLDataSource))
 
 	s.AddTool(mcp.NewTool(
@@ -1622,6 +1637,7 @@ Example: <img src="https://t.example.com/e?contentId=[content_id]&answerId=[a_id
 		mcp.WithString("type", mcp.Description("val (default, match the element's value) or attribute (match an XML attribute)")),
 		mcp.WithString("value_type", mcp.Description("What the element holds: generic (default), id, gtin, name, condition, description, price, sale_price, image, url, brand, product_type")),
 		mcp.WithString("name", mcp.Description("Label for the filter; defaults to the element's slug")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.AddProductFinderFilter))
 
 	s.AddTool(mcp.NewTool(
@@ -1824,6 +1840,7 @@ The test runs only while enabled and inside its own starts_at/ends_at window. Co
 		mcp.WithDescription("Register a checkout/order-success page URL so Poltio can count it as a conversion when reached by users who engaged with a widget. Add the same success page your site shows after a purchase or sign-up."),
 		mcp.WithString("url", mcp.Description("The checkout/order-success page URL on your site, e.g. https://shop.example.com/order/complete. Use ^ as a wildcard matching any single path segment, e.g. https://shop.example.com/^/order/^; without ^ the URL must match exactly."), mcp.Required()),
 		mcp.WithNumber("catch_all", mcp.Description("If 1, count every visit to this URL as a conversion; if 0, only count visits attributable to a prior widget interaction. Default: 1.")),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateConversionSetting))
 
 	s.AddTool(mcp.NewTool(
@@ -1976,6 +1993,7 @@ The test runs only while enabled and inside its own starts_at/ends_at window. Co
 		"create_short_link",
 		mcp.WithDescription("Create a polt.io shortened URL from any long URL."),
 		mcp.WithString("url", mcp.Description("Fully qualified URL to shorten"), mcp.Required()),
+		mcp.WithDestructiveHintAnnotation(false),
 	), withAuth(tools.CreateShortLink))
 
 	// ── Subscription ──────────────────────────────────────────────────────────
