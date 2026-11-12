@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -99,6 +100,7 @@ func main() {
 		server.WithTitle("Poltio"),
 		server.WithWebsiteURL("https://poltio.com"),
 		server.WithIcons(mcp.Icon{Src: iconURL(), MIMEType: "image/png", Sizes: []string{"1040x1040"}}),
+		server.WithToolHandlerMiddleware(reportPanics),
 	)
 
 	// ── Content ──────────────────────────────────────────────────────────────
@@ -2033,9 +2035,15 @@ The test runs only while enabled and inside its own starts_at/ends_at window. Co
 			// ones, which is all that was leaking.
 			server.WithSessionIdleTTL(24*time.Hour),
 		)
+		// HTTP mode only: a stdio user's own SENTRY_DSN must not receive our events.
+		if err := initSentry(version); err != nil {
+			log.Printf("sentry: %v", err)
+		}
 		log.Printf("poltio-mcp-server listening on :%s/mcp (api %s, resource %s)",
 			port, client.BaseURL(), publicURL())
 		if err := http.ListenAndServe(":"+port, oauthHandler(httpServer)); err != nil {
+			sentry.CaptureException(err)
+			sentry.Flush(2 * time.Second)
 			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 			os.Exit(1)
 		}
