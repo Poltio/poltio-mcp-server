@@ -18,7 +18,7 @@ func TestAPIFailureReportsOnly5xxWithoutUserContent(t *testing.T) {
 	if err := sentry.Init(sentry.ClientOptions{Dsn: "https://k@o1.ingest.sentry.io/1", Transport: tr}); err != nil {
 		t.Fatal(err)
 	}
-	defer sentry.Init(sentry.ClientOptions{}) //nolint:errcheck
+	defer sentry.CurrentHub().BindClient(nil)
 
 	status := http.StatusInternalServerError
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
