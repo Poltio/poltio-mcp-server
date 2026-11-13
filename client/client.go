@@ -12,6 +12,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/getsentry/sentry-go"
 )
 
 // Anything with no POLTIO_API_BASE_URL set gets this. /oauth/* (discovery,
@@ -251,6 +253,7 @@ func (c *PoltioClient) redirectsToRoot(loc string) bool {
 func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		reportAPIFailure(req, 0, err)
 		return nil, err
 	}
 	defer resp.Body.Close() //nolint:errcheck
@@ -268,8 +271,30 @@ func (c *PoltioClient) do(req *http.Request) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("unexpected redirect %d to %q", resp.StatusCode, loc)
 	}
+	if resp.StatusCode >= 500 {
+		reportAPIFailure(req, resp.StatusCode, nil)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
 	return body, nil
+}
+
+// reportAPIFailure sends an unreachable or 5xx Poltio API to Sentry: those are
+// ours to fix, while a 4xx is the caller's. The body and query string stay
+// out, since they can carry user content.
+func reportAPIFailure(req *http.Request, status int, err error) {
+	hub := sentry.CurrentHub().Clone()
+	hub.ConfigureScope(func(s *sentry.Scope) {
+		s.SetLevel(sentry.LevelError)
+		s.SetTags(map[string]string{"method": req.Method, "path": req.URL.Path})
+	})
+	if status == 0 {
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			err = ue.Err // ue.Error() quotes the URL with its query
+		}
+		hub.CaptureMessage("Poltio API unreachable: " + err.Error())
+		return
+	}
+	hub.CaptureMessage(fmt.Sprintf("Poltio API %d", status))
 }
