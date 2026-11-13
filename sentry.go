@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -68,12 +69,17 @@ func (t *throttle) allow(key string, now time.Time) bool {
 	return true
 }
 
+// keyNoise is the part of an error's text that changes on every request (URLs,
+// object names, ids, ports), so one outage stays one key.
+var keyNoise = regexp.MustCompile(`\S+://\S+|\d+`)
+
 func eventKey(e *sentry.Event) string {
-	if e.Message != "" || len(e.Exception) == 0 {
-		return e.Message
+	key := e.Message
+	if key == "" && len(e.Exception) > 0 {
+		x := e.Exception[len(e.Exception)-1]
+		key = x.Type + ": " + x.Value
 	}
-	x := e.Exception[len(e.Exception)-1]
-	return x.Type + ": " + x.Value
+	return keyNoise.ReplaceAllString(key, "#")
 }
 
 // reportPanics turns a panicking tool into an error result and a Sentry event.
